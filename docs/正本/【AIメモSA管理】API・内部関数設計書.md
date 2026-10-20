@@ -73,7 +73,7 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 | FN-01 | `resolveAuthenticatedUser_` | 信頼できる本人IDを取得 | 既存認証方式（未決定） |
 | FN-02 | `authorizeRequestAccess_` | 依頼者・SA・所属に基づく閲覧・更新権限 | 利用者マスター、`sa_requests` |
 | FN-03 | `validateRequestInput_` | 入力値・ID・許可遷移・本文等の検証 | 要件と状態規則 |
-| FN-04 | `readSourceSaRecords_` | 元AIメモから対象`sa_case`記録取得 | 元営業AIメモ（読取） |
+| FN-04 | `readSourceSaRecords_` | 既存`deal_records`から鹿児島所属かつ`deal_theme`が「SA依頼｜」で始まる記録を取得（専用`sa_case`列は使用しない） | 既存営業AIメモDB（読取専用） |
 | FN-05 | `importSaRequests_` | 一意キーでSA依頼を冪等取込 | 元レコード、`sa_requests`、履歴 |
 | FN-06 | `findRequestById_` | 依頼行の正確な取得 | `sa_requests` |
 | FN-07 | `updateRequestWithVersion_` | 競合回避・指定列更新 | `sa_requests` |
@@ -96,6 +96,16 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 3. 同じ元IDの既存登録を調べ、重複の場合は新規レコードと新規通知を作成しない。
 4. 新規のみ`sa_requests`へ「未担当」として登録、取込・操作ログ、SA宛通知対象を記録。
 5. 途中失敗時は失敗位置と再試行可否を記録。元AIメモのデータを変更しない。
+
+### 5.1補足 現行GAS・DBに対応した新SA管理側の取込（2026-10-20改訂）
+
+1. 権限確認済みの新システム内部処理が、既存`deal_records`を読み取る。現行GASにSA依頼専用取得APIはないため、安全な読取経路を実装前に検証する。
+2. `branch_name`を既存営業所マスターと照合して鹿児島を対象に限定し、`deal_theme`の「SA依頼｜」で選別する。`sa_case`は現行GASの一時分類でありDB上の独立列ではない。
+3. `record_id`を`source_record_id`として冪等取込する。`user_key`・`branch_name`・`deal_theme`・`original_text`を保持し、必要に応じて`deal_content`も保持する。
+4. 新内部関数候補`extractSaRequestFields_`（FN-15案）が、`deal_theme`と`original_text`を主入力に「誰に／何を／依頼の種類／決まっていること／いつまで」を構造化し、`sa_requests`の対応列へ保存する。曖昧・不明項目を創作せず抽出状態に記録し、元文章を消さない。
+5. 取込成功後の担当・状態・スレッド・添付・履歴・通知は新SA管理側が制御する。失敗時に元ID・元文章を維持し再試行可能とする。旧「SA案件」の他拠点過去データは対象外。
+
+これらは**新SA管理側の実装候補**であり、現行GASに存在するとは扱わない。既存GASのSA依頼受付・追加質問・保存処理は変更しない。鹿児島の所属判定、取得権限、通信・認証、AI構造化精度は未検証。
 
 ### 5.2 SA引受・引継ぎ（FR-06/07）
 
