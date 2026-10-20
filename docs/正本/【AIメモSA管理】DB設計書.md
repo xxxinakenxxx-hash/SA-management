@@ -60,6 +60,24 @@
 
 上記状態コードは**内部値の案**。表示名称は「未担当／対応中／営業回答待ち／完了」。元レコードIDの一意性が営業所・元システム内のどの範囲で保証されるかを調査して複合キーを確定する。
 
+### 4.1補足 現行実DBとの列対応・AI構造化（2026-10-20改訂）
+
+| 現行 `deal_records` 列 | 新 `sa_requests` 列（追加案を含む） | 用途 |
+| --- | --- | --- |
+| `record_id` | `source_record_id` | 元IDを保持して重複取込を防止 |
+| `deal_theme` | `title`, `source_deal_theme` | 「SA依頼｜」で識別し原題を保持 |
+| `original_text` | `source_original_text` | 元の文章を保持してAI構造化に利用 |
+| `deal_content` | `source_deal_content` | 補助資料。原文を置き換えない |
+| `user_key` | `sales_user_id`, `source_user_key` | 依頼者の対応 |
+| `branch_name` | `branch_id`, `source_branch_name` | 鹿児島所属をマスター照合して判定 |
+| `created_at` | `source_recorded_at` | 元記録日時 |
+
+**新システム側で構造化して保存する追加列案**：`sa_recipient`（誰に）、`sa_action`（何を）、`sa_request_type`（依頼の種類）、`sa_fixed_conditions`（決まっていること）、`sa_due_date_text`（いつまで）、`extraction_status`、`extracted_at`。期限の原文表現は文字列で保持する。列順・型の最終承認は未了。
+
+現行DBには`sa_case`・`record_type`の独立列やSA専用5項目の独立列はない。ただしSA依頼情報は`deal_theme`・`original_text`等に文章として残っており、独立列がないことを内容欠落と同一視しない。新システムがAIで5項目へ構造化し、抽出できない項目は未確認とする。元DBは変更しない。
+
+初期取込対象は鹿児島の「SA依頼｜」レコード。旧「SA案件」の他拠点・過去データの移行は対象外。営業所の照合、読取権限、AI解析結果の実データ検証は未了。
+
 ### 4.2 `sa_messages`
 
 | 列名（案） | 型 | 意味・制約案 |
