@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>鹿児島SA依頼管理</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-mark"><span class="brand-icon">SA</span><div><strong>鹿児島</strong><small>SA依頼管理</small></div></div>
+      <nav class="side-nav" aria-label="メインナビゲーション">
+        <button class="nav-item" data-nav="ダッシュボード"><span>⌂</span>ダッシュボード</button>
+        <button class="nav-item active" data-nav="SA依頼一覧"><span>☷</span>SA依頼一覧</button>
+        <button class="nav-item" data-status-nav="未担当"><span>○</span>未担当 <b class="nav-count">2</b></button>
+        <button class="nav-item" data-status-nav="対応中"><span>◔</span>対応中 <b class="nav-count blue">5</b></button>
+        <button class="nav-item" data-status-nav="営業回答待ち"><span>◌</span>営業回答待ち <b class="nav-count">1</b></button>
+        <button class="nav-item" data-status-nav="完了"><span>✓</span>完了</button>
+        <div class="nav-divider"></div>
+        <button class="nav-item" data-nav="担当別"><span>♧</span>担当別</button>
+        <button class="nav-item" data-nav="設定"><span>⚙</span>設定</button>
+      </nav>
+      <div class="sidebar-footer"><span class="online-dot"></span>サンプル環境<br><small>外部サービス未接続</small></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="page-heading"><span class="eyebrow">SA WORKSPACE</span><h1>鹿児島SA依頼管理</h1></div>
+        <div class="top-actions">
+          <label class="global-search"><span>⌕</span><input id="globalSearch" placeholder="依頼を検索" /></label>
+          <button class="new-badge" id="newBadge">新着 <strong>3件</strong></button>
+          <button class="icon-button notification-button" id="notificationButton" aria-label="通知"><span>♟</span><i></i></button>
+          <button class="user-menu" id="userMenu"><span class="avatar">山</span><span><strong>山田SA</strong><small>鹿児島営業所</small></span><b>⌄</b></button>
+        </div>
+      </header>
+
+      <section class="kpi-grid" aria-label="件数サマリー">
+        <button class="kpi-card red" data-kpi-status="新着"><span class="kpi-icon">▣</span><span><small>新着・未読</small><strong id="kpi-new">3<em>件</em></strong></span><b>›</b></button>
+        <button class="kpi-card amber" data-kpi-status="未担当"><span class="kpi-icon">♙</span><span><small>未担当</small><strong id="kpi-unassigned">2<em>件</em></strong></span><b>›</b></button>
+        <button class="kpi-card blue" data-kpi-status="対応中"><span class="kpi-icon">◔</span><span><small>対応中</small><strong id="kpi-progress">5<em>件</em></strong></span><b>›</b></button>
+        <button class="kpi-card slate" data-kpi-status="営業回答待ち"><span class="kpi-icon">▱</span><span><small>営業回答待ち</small><strong id="kpi-waiting">1<em>件</em></strong></span><b>›</b></button>
+        <button class="kpi-card green" data-kpi-status="完了"><span class="kpi-icon">✓</span><span><small>完了</small><strong id="kpi-done">12<em>件</em></strong></span><b>›</b></button>
+      </section>
+
+      <section class="workspace-grid">
+        <section class="panel request-panel">
+          <div class="panel-header"><div><span class="eyebrow">REQUEST QUEUE</span><h2>SA依頼一覧</h2></div><button class="text-button" id="clearFilters">クリア</button></div>
+          <div class="filter-row">
+            <select id="statusFilter" aria-label="ステータス"><option value="">ステータス</option><option>未担当</option><option>対応中</option><option>営業回答待ち</option><option>完了</option></select>
+            <select id="assigneeFilter" aria-label="担当者"><option value="">担当者</option><option>山田SA</option><option>鈴木SA</option><option>佐々木SA</option><option>未担当</option></select>
+            <select id="deadlineFilter" aria-label="期限"><option value="">期限</option><option value="today">本日</option><option value="overdue">期限超過</option><option value="soon">3日以内</option></select>
+          </div>
+          <label class="list-search"><span>⌕</span><input id="listSearch" placeholder="キーワード検索" /></label>
+          <div class="queue-meta"><span id="queueCount">5件を表示</span><button id="priorityToggle" class="priority-toggle"><span></span>要対応を優先</button></div>
+          <div id="requestList" class="request-list"></div>
+        </section>
+
+        <section class="panel detail-panel">
+          <div id="detailContent"></div>
+        </section>
+
+        <section class="panel comms-panel">
+          <div class="comms-header"><div><span class="eyebrow">COLLABORATION</span><h2>やり取り</h2></div><div class="demo-switch"><span>営業役</span><button id="roleToggle" class="switch" aria-label="営業役に切り替え"><i></i></button></div></div>
+          <div id="threadMessages" class="thread-messages"></div>
+          <form id="messageForm" class="message-form"><input id="messageInput" placeholder="メッセージを入力" autocomplete="off" /><button type="submit">送信</button></form>
+          <div class="deliverables">
+            <div class="section-title"><h2>成果物</h2><button class="upload-button" id="uploadButton">＋ PDFを選択</button><input id="fileInput" type="file" accept="application/pdf" hidden /></div>
+            <div id="fileList" class="file-list"></div>
+            <label class="field-label">備考 <textarea id="noteInput" rows="2" placeholder="備考を入力（任意）"></textarea></label>
+            <label class="field-label">完了時コメント <textarea id="completionInput" rows="2" placeholder="営業へ返却する内容を入力"></textarea></label>
+            <div class="return-hint"><span>↗</span><div><strong>完了登録で営業へ返却</strong><small>実際の通知・メール送信は行いません</small></div></div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+  <div id="notificationPopover" class="notification-popover" hidden>
+    <div class="popover-head"><strong>通知</strong><button id="closeNotifications">×</button></div>
+    <button class="notification-row" data-open-id="req-002"><span class="notice-dot red-dot"></span><span><strong>新しいSA依頼</strong><small>展示会資料のPDF化が届きました</small><time>たった今</time></span></button>
+    <button class="notification-row" data-open-id="req-001"><span class="notice-dot blue-dot"></span><span><strong>営業から返信</strong><small>〇〇商店の数量について回答があります</small><time>10:15</time></span></button>
+    <button class="notification-row" data-open-id="req-003"><span class="notice-dot amber-dot"></span><span><strong>期限が近い依頼</strong><small>契約書の差し替えは明日が期限です</small><time>昨日</time></span></button>
+  </div>
+
+  <div id="modalRoot" class="modal-root" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
