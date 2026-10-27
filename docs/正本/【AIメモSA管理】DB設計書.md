@@ -1,14 +1,14 @@
 # 【AIメモSA管理】DB設計書
 
 作成日：2026-10-20  
-文書状態：初稿・承認前（物理シート未作成）  
+文書状態：確定済み業務方針を反映したDB設計（物理シート未作成・実体未検証）  
 初期導入：鹿児島営業所、将来は複数営業所
 
 ## 1. 目的・参照資料・前提
 
-本書はAIメモSA管理の依頼・担当・質疑・添付・通知・履歴に必要なデータ構造を定める**設計案**である。業務要件は「【AIメモSA管理】要件定義書.md」FR-01〜21、NFR-01〜12、技術的制約は「【AIメモSA管理】技術設計書.md」を参照。両者とも未承認。現行`deal_records`の実際の列と保存形式は2026-10-20に照合済みで、§4.1補足に反映した。新SA管理側の物理シートは未作成。
+本書はAIメモSA管理の依頼・担当・質疑・添付・通知・履歴に必要なデータ構造を定める**設計案**である。業務要件は「【AIメモSA管理】要件定義書.md」FR-01〜21、NFR-01〜12、技術的制約は「【AIメモSA管理】技術設計書.md」を参照。業務方針は確定済み。実装と技術検証は未完了。現行`deal_records`の実際の列と保存形式は2026-10-20に照合済みで、§4.1補足に反映した。新SA管理側の物理シートは未作成。
 
-保存方針：業務データはGoogle Sheets、添付実体はGoogle Drive。既存の営業AIメモの商談記録を原則更新せず、SA管理側に必要な情報を別に管理する。以下の**物理シート名・列名・型は実装のための提案であり未承認**。実際の列追加・既存シート改修・初期化は本書作成の対象外。
+保存方針：業務データはGoogle Sheets、添付実体はGoogle Drive。既存の営業AIメモの商談記録を原則更新せず、SA管理側に必要な情報を別に管理する。以下は確定済みの機能要件を実現する設計上の列・型。実シートへの反映・現行接続の検証は未実施。実際の列追加・既存シート改修・初期化は本書作成の対象外。
 
 ## 2. 設計原則
 
@@ -35,7 +35,7 @@
 
 ## 4. 列定義案
 
-記法：文字列＝String、日時＝ISO8601表現またはSheets日時（統一方法未決定）、真偽＝Boolean、整数＝Integer。空欄可否・最大長は後続詳細設計で確定。「必須」は論理的に必要という意味であり、既存実装済みではない。
+記法：String＝文字列、DateTime＝ISO 8601（JSTの時差付き文字列で保存）、Date＝`yyyy-MM-dd`、Boolean＝真偽値、Integer＝整数。列順は既存シート内の記載順を基本とし、実作成時の列位置を確定する。「必須」は論理的に必要という意味であり、既存実装済みではない。
 
 ### 4.1 `sa_requests`
 
@@ -56,7 +56,24 @@
 | `created_at` | DateTime | 取込・受付日時 |
 | `updated_at` | DateTime | 最終更新日時 |
 | `completed_at` | DateTime | 完了日時 |
-| `row_version` | Integer | 排他・競合検知用バージョン候補 |
+| `row_version` | Integer | 必須。初期1、依頼更新ごとに+1。LockServiceによる排他中に期待版と一致する場合のみ更新 |
+| `source_deal_theme` | String | 元のSA依頼件名（コピーは取込時の監査用スナップショット。元DBは参照元） |
+| `source_original_text` | String | 元依頼原文の取込時スナップショット（保持）。元データはrecord_idで必要時参照 |
+| `source_deal_content` | String/null | 元の補助テキスト。存在する場合のみ保持 |
+| `source_user_key` | String | 元レコードの依頼者キー |
+| `source_branch_name` | String | 元レコード所属名。branch_idは既存マスターから解決 |
+| `sa_recipient` | String/null | OpenAI抽出：誰に。判断不能はnull |
+| `sa_action` | String/null | OpenAI抽出：何を。判断不能はnull |
+| `sa_request_type` | String/null | OpenAI抽出：依頼の種類 |
+| `sa_fixed_conditions` | String/null | OpenAI抽出：決まっていること |
+| `sa_due_date_text` | String/null | OpenAI抽出の期限表現。上書き訂正後も元文章はsource_original_textに保持 |
+| `sa_due_date` | Date/null | 依頼日時を基準に解析・訂正された期限の日付。解釈不能ならnull |
+| `sa_due_urgent` | Boolean | `なるべく早く`等はtrue。根拠のない日付は付けない |
+| `sa_due_date_updated_by` | String/null | 期限を手動訂正したSAのID |
+| `sa_due_date_updated_at` | DateTime/null | 期限の手動訂正日時 |
+| `sa_note` | String/null | SAの備考。完了コメントとは独立 |
+| `extraction_status` | String | `pending/complete/needs_review/failed` |
+| `extracted_at` | DateTime/null | 抽出完了時刻。外部API未許可の場合はnull |
 
 上記状態コードは**内部値の案**。表示名称は「未担当／対応中／営業回答待ち／完了」。元レコードIDの一意性が営業所・元システム内のどの範囲で保証されるかを調査して複合キーを確定する。
 
@@ -72,15 +89,13 @@
 | `branch_name` | `branch_id`, `source_branch_name` | 鹿児島所属をマスター照合して判定 |
 | `created_at` | `source_recorded_at` | 元記録日時 |
 
-**新システム側で構造化して保存する追加列案**：`sa_recipient`（誰に）、`sa_action`（何を）、`sa_request_type`（依頼の種類）、`sa_fixed_conditions`（決まっていること）、`sa_due_date_text`（いつまで）、`extraction_status`、`extracted_at`。期限の原文表現は文字列で保持する。列順・型の最終承認は未了。
+抽出5項目・期限の解釈値・抽出状態は§4.1の正式列へ統合済み。元文章を保持し、欠落した値はnullとする。
 
 現行DBには`sa_case`・`record_type`の独立列やSA専用5項目の独立列はない。ただしSA依頼情報は`deal_theme`・`original_text`等に文章として残っており、独立列がないことを内容欠落と同一視しない。新システムがAIで5項目へ構造化し、抽出できない項目は未確認とする。元DBは変更しない。
 
 初期取込対象は鹿児島の「SA依頼｜」レコード。旧「SA案件」の他拠点・過去データの移行は対象外。営業所の照合、読取権限、AI解析結果の実データ検証は未了。
 
-### 4.1正式列への統合方針
-
-§4.1補足の`source_deal_theme`、`source_original_text`、`source_deal_content`、`source_user_key`、`source_branch_name`と、`sa_recipient`、`sa_action`、`sa_request_type`、`sa_fixed_conditions`、`sa_due_date_text`、`extraction_status`、`extracted_at`は**同じ`sa_requests`に保持する設計対象列**であり、別表や既存元DBの列を意味しない。型は原文・抽出5項目・抽出状態をString、`extracted_at`をDateTimeとする。空欄・値長・期限正規化等はSA-U-02／SA-U-10に従って確定する。
+元データの取込では`source_record_id`のみを連携・重複識別の軸とし、元列は権限付き参照から必要分だけ取り込み時点のスナップショットとして保存する。新DBは非SA商談の全文コピーではなく、SA依頼のみを保存する。元データの更新・複製マスターは行わない。元ID読取の実通信成立は未検証。
 
 ### 4.2 `sa_messages`
 
@@ -90,10 +105,12 @@
 | `request_id` | String | 所属依頼ID、必須 |
 | `sender_user_id` | String | 投稿者ID、必須 |
 | `sender_role` | String | 投稿時の役割（監査用） |
-| `message_type` | String | 質問・回答・通常投稿・訂正投稿・添付リンク案。実際の列挙値はAPI設計で定義 |
+| `message_type` | String | `question/sales_reply/normal/correction/attachment_link`の列挙。カード状態は変えない |
 | `body` | String | 投稿本文、必須 |
 | `created_at` | DateTime | サーバー採番日時 |
-| `client_operation_id` | String | 再送時の二重投稿防止候補 |
+| `client_operation_id` | String | 投稿者ごとに一意。再送は同じmessage_idを返す |
+| `corrects_message_id` | String/null | 訂正対象。元投稿は残し同じrequest_idの範囲で検証 |
+| `attachment_id` | String/null | 成果物リンク投稿の場合は同一依頼の添付IDを参照 |
 
 公開されるメッセージにユーザーが任意の`sender_user_id`を指定できないようにする。
 
@@ -110,7 +127,8 @@
 | `uploaded_by_user_id` | String | 登録したSA |
 | `is_returned_to_sales` | Boolean | 営業への返却対象か |
 | `created_at` | DateTime | 登録日時 |
-| `file_version` | Integer | 差替え履歴の管理候補、詳細未決定 |
+| `file_version` | Integer | 初期1、差替えは旧行を残し新attachment_idに版を追加 |
+| `thread_message_id` | String/null | 対応する添付リンク投稿のmessage_id。request_id一致を必須とする |
 
 営業所ごとに管理設定されたGoogle Driveフォルダ（鹿児島は既存Drive配下）へ保存し、成功時に取得したファイルID・リンクを当該依頼スレッドと紐づける。添付がない依頼も完了可能。添付実体への権限はDriveとアプリ側で検証。返却対象フラグのみで無制限共有しない。
 
@@ -148,24 +166,16 @@
 
 ### 4.6 `sa_read_cursors`／`sa_import_log`（候補）
 
-- `sa_read_cursors`：`cursor_id`、`request_id`、`user_id`、`last_read_message_id`、`read_at`。個人別未読表示を実現する設計候補。
+- `sa_read_cursors`：`cursor_id`、`request_id`、`user_id`、`last_read_message_id`（null可）、`read_at`（null可）、`sort_order`（整数・null可）、`sort_version`（初期1）。同一`user_id × request_id`を一意にし、未読とSA本人別の並び順を同じ7シート内に保存する。他SAの順序を書き換えない。
 - `sa_import_log`：`import_event_id`、`source_record_id`、`result`、`error_code`、`processed_at`。元依頼との二重取込防止と再試行監査用の候補。
 - これらの採否、列の型・形式・対象行数はAPI設計と検証結果に合わせて確定する。
 
-### 4.7 確定済み業務項目の物理対応（2026-10-26）
+### 4.7 既定機能の保存先と更新規則
 
-既存7シート案を維持し、追加シートは前提としない。以下は新SA側の保存項目として確定した論理列。型や既存列への割付は実装前のDB契約で整合させる。
-
-| 既存対象 | 論理項目（列候補） | 型・扱い |
-| --- | --- | --- |
-| `sa_requests` | `sa_note` | String。SAの備考メモ。完了コメントとは別保存し、再表示・更新できる |
-| `sa_requests` | `sa_due_date_text` | String。AI抽出した期限の原文を保持する |
-| `sa_requests` | `sa_due_date` | Date/null。「今週中」「今週末」「来週中」「○曜日まで」等の基準日からの解釈日。架空日付を作らない |
-| `sa_requests` | `sa_due_urgent` | Boolean。「なるべく早く」等の至急を日付と区別して期限として扱う |
-| 既存SA個人設定領域 | `user_id`, `request_id`, `sort_order` | 本人別の一覧順。担当・進捗の共通値は変更しない |
-| 営業所設定領域 | `branch_id`, `drive_folder_id` | 営業所ごとのDrive保存先。営業所固定値をコードに埋め込まない |
-
-期限の基準日と曜日解釈は依頼日時を使い、原文・解釈結果を保持する。カード進捗は `sa_requests` 側の明示操作のみで変更し、`sa_messages` の追記では変更しない。マスターは営業AIメモを直接参照し、コピー用の新SAマスターを増設しない。OpenAI API抽出は外部送信・課金承認前に実行しない。
+- **SA備考・期限**：`sa_requests.sa_note`、`sa_due_date_text`、`sa_due_date`、`sa_due_urgent`に保存。期限手動訂正は原文スナップショットを維持し、訂正者・日時・監査履歴を記録する。
+- **本人別並び順**：7シート内の`sa_read_cursors`に`user_id × request_id`を一意キーとして`sort_order`を格納。新規依頼は末尾へ、並び順未設定なら受付日時とrequest_id順。操作した本人の行だけロック下で並べ直し、他のSAの設定は不変。担当・状態は`sa_requests`にある共有値を使う。
+- **営業所別Drive保存先**：7シートの外に新しい管理シートを増やさず、**SA管理GASのScript Properties**へ`SA_DRIVE_FOLDER_<branch_id>`のキーで既存DriveフォルダIDを設定する。これは利用者マスターの複製ではなく、営業所別のアプリ設定値。既存の運用権限で設定・更新し、独立管理画面とSA管理者ロールは追加しない。未設定・到達不能・権限不足ならファイル登録を拒否し、既存の設定値を勝手に補完しない。設定変更は日時・変更者・対象営業所を運用記録に残す。
+- **排他と復旧**：依頼更新は`LockService`下で`row_version`を検証する。メッセージと通知は操作IDで再実行を冪等化。Drive保存成功後にSheets登録が失敗した場合は対応するIDを失敗ログに記録し、孤立ファイルを追跡して復旧する。通知送信の成否で依頼状態は変更しない。
 
 ## 5. 論理関係
 
@@ -209,16 +219,16 @@ sa_requests (request_id, branch_id, sales_user_id, assigned_sa_user_id)
 
 ### 7.1 2026-10-23の連携設計・未承認条件
 
-SA依頼の連携用ID列だけを新SA側へリンクする構成を優先検証する。新SAの業務レコードにはSA依頼だけを登録し、元`record_id`で重複を防ぎ、関連列は必要時に参照する。元DBへの列追加の必要性、関数連携速度、後続処理は実環境または隔離試験で確定する。**今回、元DBに列を追加したものではない。** 5項目のAI抽出については、外部送信範囲・使用AI・費用が承認されるまで外部通信・課金を行わない。
+既存の`record_id`を参照キーとし、SA依頼のIDを新SA側へ連携する方式を優先検証する。新SAの業務レコードにはSA依頼だけを登録し、元`record_id`で重複を防ぎ、関連列は必要時に参照する。元DBへの列追加の必要性、関数連携速度、後続処理は実環境または隔離試験で確定する。**今回、元DBに列を追加したものではない。** 5項目のAI抽出については、外部送信範囲・OpenAIモデル・費用と実データ通信が承認されるまで外部通信・課金を行わない。
 
 ## 8. 未確定事項・確認事項
 
 1. `deal_records`の対象列と「SA依頼｜」保存形式は確認済み。残件は読取権限・元IDの一意範囲・マスター照合（SA-U-01／SA-U-03）。
 2. 利用者マスター・営業所マスターの物理名、キー、所属・権限照合方法。
-3. 正式な各シート名、列順、必須/任意、型、文字数、採番規則。
+3. 7シートの名称・主要列は本文で定義済み。実シートの列順・文字数上限・初期データは実装前の照合対象。
 4. 元IDの一意範囲、再取込時の更新許可範囲。
 5. カード側の明示的な状態変更、担当変更時の競合、完了後再開、添付差替えの詳細処理。スレッド投稿からの自動状態変更はしない。
-6. 既読管理方式、通知チャンネル、配信失敗時の回復方法。
+6. 既読・本人別表示順はsa_read_cursorsに保存する。営業通知はGoogle Chat。未検証事項は配送失敗時の回復方法。
 7. ファイル形式・容量、既存営業AIメモ基準によるバックアップ、利用規模、性能。SA独自保存期限は設定しない。
 8. 他営業所のデータ分離、拠点異動・兼務時の扱い。
 
