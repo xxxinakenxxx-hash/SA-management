@@ -6,7 +6,7 @@
 
 ## 1. 目的・参照資料・前提
 
-本書はAIメモSA管理の依頼・担当・質疑・添付・通知・履歴に必要なデータ構造を定める**設計案**である。業務要件は「【AIメモSA管理】要件定義書.md」FR-01〜21、NFR-01〜12、技術的制約は「【AIメモSA管理】技術設計書.md」を参照。業務方針は確定済み。実装と技術検証は未完了。現行`deal_records`の実際の列と保存形式は2026-10-20に照合済みで、§4.1補足に反映した。新SA管理側の物理シートは未作成。
+本書はAIメモSA管理の確定済み業務方針に基づき依頼・担当・質疑・添付・通知・履歴に必要なデータ構造を定める設計正本である。業務要件は「【AIメモSA管理】要件定義書.md」FR-01〜25、NFR-01〜12、技術的制約は「【AIメモSA管理】技術設計書.md」を参照。業務方針は確定済み。実装と技術検証は未完了。現行`deal_records`の実際の列と保存形式は2026-10-20に照合済みで、§4.1補足に反映した。新SA管理側の物理シートは未作成。
 
 保存方針：業務データはGoogle Sheets、添付実体はGoogle Drive。既存の営業AIメモの商談記録を原則更新せず、SA管理側に必要な情報を別に管理する。以下は確定済みの機能要件を実現する設計上の列・型。実シートへの反映・現行接続の検証は未実施。実際の列追加・既存シート改修・初期化は本書作成の対象外。
 
@@ -43,14 +43,14 @@
 | --- | --- | --- |
 | `request_id` | String | 主キー、不変 |
 | `source_system` | String | 既存「営業AIメモ」を示す識別子 |
-| `source_record_id` | String | 元依頼の一意識別子。重複判定キーの候補 |
+| `source_record_id` | String | 元依頼ID。source_systemと複合で一意、重複取込防止に使用 |
 | `branch_id` | String | 依頼の所属営業所。必須 |
 | `sales_user_id` | String | 依頼した営業本人。必須 |
 | `title` | String | 依頼タイトル。既存分類の「SA依頼｜内容」を想定 |
 | `body` | String | 依頼本文 |
 | `customer_ref` | String | 顧客参照。元データに存在する場合のみ、未確定 |
 | `assigned_sa_user_id` | String | 現担当者。未担当なら空 |
-| `status` | String | `unassigned/in_progress/waiting_sales/completed`の4値案 |
+| `status` | String | `unassigned/in_progress/waiting_sales/completed`の4値。完了はAPI-11のみ |
 | `completion_comment` | String | 完了返却コメント |
 | `source_recorded_at` | DateTime | 元記録日時 |
 | `created_at` | DateTime | 取込・受付日時 |
@@ -75,7 +75,7 @@
 | `extraction_status` | String | `pending/complete/needs_review/failed` |
 | `extracted_at` | DateTime/null | 抽出完了時刻。外部API未許可の場合はnull |
 
-上記状態コードは**内部値の案**。表示名称は「未担当／対応中／営業回答待ち／完了」。元レコードIDの一意性が営業所・元システム内のどの範囲で保証されるかを調査して複合キーを確定する。
+上記状態コードは内部保存値として採用。表示名称は「未担当／対応中／営業回答待ち／完了」。元レコードIDの一意性が営業所・元システム内のどの範囲で保証されるかを調査して複合キーを確定する。
 
 ### 4.1補足 現行実DBとの列対応・AI構造化（2026-10-20改訂）
 
@@ -155,7 +155,7 @@
 | `recipient_user_id` | String | 受信者 |
 | `event_type` | String | 新規依頼・営業質問・営業回答・完了など |
 | `channel` | String | `google_chat`（SA質問・完了時の営業への個別通知）。SA新着は画面起動中の表示で扱い、閉アプリPushやメール配送は行わない |
-| `delivery_status` | String | `pending/sent/failed`等の候補 |
+| `delivery_status` | String | `pending/sent/failed`。`sent`はGoogle Chat送信APIの受理を示し、営業の開封を意味しない |
 | `attempt_count` | Integer | 試行回数 |
 | `next_retry_at` | DateTime | 次回試行予定 |
 | `sent_at` | DateTime | 成功と判断した日時 |
