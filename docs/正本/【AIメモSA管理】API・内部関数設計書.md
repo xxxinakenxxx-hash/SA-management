@@ -1,20 +1,20 @@
 # 【AIメモSA管理】API・内部関数設計書
 
 作成日：2026-10-20  
-文書状態：初稿・承認前（API実装・実通信未実施）  
+文書状態：確定済み業務方針に基づく論理API契約（API実装・実通信未実施）  
 初期導入：鹿児島営業所、将来の複数営業所利用を想定
 
 ## 1. 目的・参照関係
 
-要件定義書FR-01〜21、NFR-01〜12、技術設計書、**同一ブランチの「【AIメモSA管理】DB設計書.md」**を基に、SA依頼の取込・表示・担当・会話・成果物・通知処理のAPI境界と内部関数候補を整理する。いずれも現時点では未承認の案である。関数名・アクション名・パラメータは設計候補であり、現行GASに存在することを意味しない。
+要件定義書FR-01〜21、NFR-01〜12、技術設計書、**同一ブランチの「【AIメモSA管理】DB設計書.md」**を基に、SA依頼の取込・表示・担当・会話・成果物・通知処理のAPI境界と内部関数候補を整理する。業務要件の確定済み事項は本文に採用し、実装・認証・実通信の検証は未実施である。関数名・アクション名・パラメータは設計候補であり、現行GASに存在することを意味しない。
 
 Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`など）、別オリジン通信の可否、認証方式、公開URLは**未確定**。特定方式を実装確定として扱わない。
 
 ## 2. 共通処理契約
 
 - 全ての要求でサーバー側が利用者を認証し、所属・役割・対象依頼への権限を検査する。クライアント指定の`user_id`や`branch_id`を本人認証の根拠にしない。
-- 読取も更新も営業本人または許可済みSAの範囲のみ。未認可の場合は対象の存在や顧客情報を漏らさない。
-- 登録・変更処理は入力値を検証し、失敗時に「成功」と返さない。二重投稿防止の`client_operation_id`や`row_version`は**採用候補**。
+- 読取は所属営業所の営業または許可SAに認め、営業の投稿は本人依頼のみ。添付取得は依頼閲覧と別認可。未認可の場合は対象の存在や顧客情報を漏らさない。
+- 登録・変更処理は入力値を検証し、失敗時に「成功」と返さない。二重投稿防止の`client_operation_id`（二重送信防止）と`row_version`（変更競合防止）を必須の更新契約とする。
 - `request_id`は本システム内の不変ID、`source_record_id`は既存AIメモ元データのID。混同しない。
 - 通知は業務更新の結果を起点に生成し、業務更新と配送成功を同一結果とみなさない。
 - 日時・タイムゾーン、ページング、例外コード、入力長の制限は後続で確定する。
@@ -52,29 +52,35 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 | API ID | 名称案 | 呼び出し元 | 入力の要点 | 出力・副作用 | 要件 |
 | --- | --- | --- | --- | --- | --- |
 | API-01 | `getMyProfile` | 両画面 | 認証コンテキスト | 利用者・役割・許可所属、機密項目は除外 | FR-19 |
-| API-02 | `listRequests` | SA/営業 | 状態、担当、ページング等 | 認可済み依頼一覧、無断横断禁止 | FR-03/04/18 |
-| API-03 | `getRequestDetail` | SA/営業 | request_id | 依頼・閲覧可能なメッセージ・添付・状態 | FR-05/18 |
+| API-02 | `listRequests` | SA/営業 | 状態・担当・期限絞込・本人依頼絞込・ページング | 所属営業所の認可済み依頼一覧。SA本人の並び順と未読も返す | FR-03/04/18 |
+| API-03 | `getRequestDetail` | SA/営業 | request_id | 依頼、期限原文・解釈日・至急区分、SA備考（SAのみ）、閲覧可能なメッセージ・添付メタ情報、状態、row_version | FR-05/18 |
 | API-04 | `claimRequest` | SA | request_id、更新前提条件候補 | 未担当→担当確定、履歴追加 | FR-06/08/14 |
 | API-05 | `reassignRequest` | SA | request_id、変更先SA ID、理由候補 | 担当変更、履歴追加 | FR-07/14 |
 | API-06 | `changeRequestStatus` | SA | request_id、次状態（未担当／対応中／営業回答待ち）、前提条件 | カードの明示操作による進捗更新・履歴追加。完了登録はAPI-11のみ | FR-08/14 |
-| API-07 | `postMessage` | SA/営業 | request_id、本文、投稿種別候補 | メッセージ保存・必要な通知キュー。カード状態は変更しない | FR-09/10/11/15/16 |
+| API-07 | `postMessage` | SA/営業 | request_id、body、message_type、client_operation_id、corrects_message_id（任意）、attachment_id（任意） | 追加メッセージのmessage_id。質問は営業宛Google Chatキュー。カード状態は変更しない | FR-09/10/11/15/16 |
 | API-08 | `markThreadRead` | SA/営業 | request_id、既読位置 | 当該本人の既読情報更新 | FR-11 |
 | API-09 | `registerAttachment` | SA | request_id、ファイル参照/データ方式未定 | Drive保存・添付参照と履歴 | FR-12/14 |
 | API-10 | `getAttachmentAccess` | SA/営業 | attachment_id、request_id | 認可済みファイルの安全な参照導線 | FR-12/18/19 |
 | API-11 | `completeRequest` | SA | request_id、完了コメント、返却添付ID群（0件可）、更新前提条件 | 唯一の完了登録経路。完了状態・履歴を保存しGoogle Chat通知を別キュー管理 | FR-13/14/16 |
-| API-12 | `getActivityHistory` | SA（営業開示範囲未定） | request_id、ページング | 許可範囲の操作履歴 | FR-14 |
+| API-12 | `getActivityHistory` | SA（営業は公開対象のみ） | request_id、ページング | 認可範囲の操作履歴 | FR-14 |
+| API-13 | `updateSaNote` | SA | request_id、sa_note、expected_row_version、client_operation_id | sa_requests.sa_note更新、row_versionと監査履歴 | SA備考 |
+| API-14 | `saveMyRequestOrder` | SA | ordered_request_ids、expected_sort_versions、client_operation_id | 本人のsa_read_cursors.sort_orderだけを更新。別SAの並び順・カード状態を変更しない | SA本人別並び順 |
+| API-15 | `correctRequestDueDate` | SA | request_id、sa_due_date_text、sa_due_date、sa_due_urgent、expected_row_version、client_operation_id | 元原文を保持したまま訂正値・訂正者・日時・監査履歴を記録 | 相対期限訂正 |
 
 取込処理・通知配送は公開画面から自由実行できるAPIにせず、認可された内部処理として扱う。添付アップロードの実体通信方式はGASのサイズ・認証・ホスティングの技術検証が必要。
 
-### 3.1 既存APIの確定対応
-- API-02：担当者を選択して一覧を切替。本人別の並び順を保持する。
-- API-03：期限原文・解釈日・至急区分とSA備考を返す。
-- API-06：カードの明示操作でだけ進捗変更し、完了後も再開できる。
-- API-07：投稿・返信・訂正の保存ではカード状態を変更しない。
-- API-11：添付なし完了を認める。
-- 備考は完了コメントと別のSA業務メモとして保存・更新する。既存APIの入出力と一致させる。
-- 営業所別Drive保存先は営業所IDに紐づく設定値を参照し、独立画面は作らない。
-- 既存の営業AIメモの社員・営業所マスターを直接参照し、複製しない。OpenAI APIを採用し、実データ送信・課金には別途承認を要する。
+### 3.1 画面更新契約と認可
+
+- **API-13：備考保存**。SA本人を既存マスターから識別し、依頼が同じ営業所の管理対象であることを確認。`sa_note`は完了コメントと独立し、空文字でクリア可。応答は更新後の値・`row_version`。競合時は`CONFLICT`、二重送信は同一結果。
+- **API-14：本人別並び順**。`ordered_request_ids`は認可済みの同一営業所の依頼IDだけを許可。サーバーが本人IDを解決し`sa_read_cursors`の`user_id × request_id`行をロック下で更新。重複ID・他営業所IDは拒否。未指定の新規依頼は末尾、未設定なら受付日時＋ID順。本人以外の並び順に触れない。応答は本人の並び順・更新版。
+- **API-15：期限訂正**。SAのみ。元の`source_original_text`は変更せず、解釈日が必要な場合は`yyyy-MM-dd`で受け取り、急ぎ表現なら日付なしも許可。`sa_due_date_text`、`sa_due_date`、`sa_due_urgent`を整合検証し履歴に残す。応答に訂正後の値・`row_version`を返す。
+- **API-06とAPI-11**：通常のカード状態変更はAPI-06、**完了への変更はAPI-11のみ**。API-06の`completed`指定は拒否。営業回答待ちからも完了操作を許可。完了後の明示的な再開はAPI-06で`in_progress`へ変更可能。メッセージ投稿でカード状態を変更しない。
+- **API-09/10**：添付は`request_id`とリンク投稿`message_id`を対応付け、`attachment_id`の同一依頼一致を確認。一般公開Driveリンクは返さず、取得者ごとに権限を再確認する。
+- **SA向け画面通知**：起動中のみ新着・未読をAPI-02/03/08で差分更新。営業へは質問・完了の保存成功を起点にGoogle Chatキューを生成し、配送結果を本体保存と分離する。
+
+### 3.2 営業所別Drive設定
+
+新しいSA設定画面やSA管理者ロールは作らない。既存運用権限でSA管理GASのScript Propertiesキー`SA_DRIVE_FOLDER_<branch_id>`を管理する。ファイル登録時に認証済みSAの所属`branch_id`からフォルダIDを読み、フォルダ到達・書込権限を検査する。キー欠落・権限不足・不正フォルダなら`STORAGE_ERROR`として保存しない。設定変更は既存運用記録に操作者・日時・対象営業所を残す。
 
 ## 4. バッチ・内部関数一覧（候補）
 
@@ -94,7 +100,7 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 | FN-12 | `deliverPendingNotifications_` | 認可済み宛先へ送信・再試行・状態記録 | `sa_notifications` |
 | FN-13 | `readThreadCursor_` | 未読位置の参照・更新 | `sa_read_cursors`候補 |
 | FN-14 | `recordImportOutcome_` | 取込結果・失敗・再試行経過 | `sa_import_log`候補 |
-| FN-15 | `extractSaRequestFields_` | 原文と件名から5項目の抽出・状態記録 | `sa_requests`の抽出列・元原文 |
+| FN-15 | `extractSaRequestFields_` | OpenAI APIで5項目を抽出してsa_requestsの正式列へ保存。抽出不可はnull、状態pending/complete/needs_review/failed。実データ送信・課金は別途許可 | sa_requests抽出5列・原文・状態 |
 
 上記は論理責務を整理する仮の関数名。GASの`doGet`/`doPost`への具体的振り分け、トリガー起動方式、関数ファイル分割、公開操作許可リストは技術検証後に確定。内部関数はクライアントに直接公開しない。
 
@@ -104,7 +110,7 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 
 1. 権限確認済みの内部処理で`deal_records`から`deal_theme`が「SA依頼｜」で始まる対象営業所のレコードを読む。`sa_case`専用列は参照しない。
 2. 元IDと営業所・依頼者を検証。認可・所属情報が不足した元データを勝手に補完しない。
-3. 同じ元IDの既存登録を調べ、重複の場合は新規レコードと新規通知を作成しない。
+3. 同じ`source_system × source_record_id`の既存登録をロック下で調べ、重複の場合は新規レコードと新規通知を作成しない。
 4. 新規のみ`sa_requests`へ「未担当」として登録、取込・操作ログ、SA宛通知対象を記録。
 5. 途中失敗時は失敗位置と再試行可否を記録。元AIメモのデータを変更しない。
 
@@ -112,7 +118,7 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 
 1. 権限確認済みの新システム内部処理が、既存`deal_records`を読み取る。現行GASにSA依頼専用取得APIはないため、安全な読取経路を実装前に検証する。
 2. `branch_name`を既存営業所マスターと照合して鹿児島を対象に限定し、`deal_theme`の「SA依頼｜」で選別する。`sa_case`は現行GASの一時分類でありDB上の独立列ではない。
-3. `record_id`を`source_record_id`として冪等取込する。`user_key`・`branch_name`・`deal_theme`・`original_text`を保持し、必要に応じて`deal_content`も保持する。
+3. `record_id`だけを取込識別キーとし、必要な`user_key`・`branch_name`・`deal_theme`・`original_text`を元レコードIDにより権限付きで取得して取込時のスナップショットとして保存する。`deal_content`は必要時のみ保持。非SA商談は複製しない。元データを変更しない。
 4. 新内部関数候補`extractSaRequestFields_`（FN-15案）が、`deal_theme`と`original_text`を主入力に「誰に／何を／依頼の種類／決まっていること／いつまで」を構造化し、`sa_requests`の対応列へ保存する。曖昧・不明項目を創作せず抽出状態に記録し、元文章を消さない。
 5. 取込成功後の担当・状態・スレッド・添付・履歴・通知は新SA管理側が制御する。失敗時に元ID・元文章を維持し再試行可能とする。旧「SA案件」の他拠点過去データは対象外。
 
@@ -145,7 +151,7 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 
 ### 5.5 質問投稿と通常投稿の区別
 
-`postMessage`のSAによる質問と通常投稿は種別で区別する必要がある。`message_type`は質問・営業回答・通常投稿・訂正を区別し、入力種別をサーバー側で検証する。物理コードはDB列挙と一致させる。質問・通常投稿・訂正はいずれもカード進捗を自動変更しない。クライアントが任意指定した種別を検証せず信用しない。
+`postMessage`のSAによる質問と通常投稿は種別で区別する必要がある。`message_type`は`question/sales_reply/normal/correction/attachment_link`の列挙のみ許可。営業からの`sales_reply`と本人依頼への投稿以外の権限外入力を拒否し、訂正先・添付IDは同じ依頼に属することを検証する。質問・通常投稿・訂正はいずれもカード進捗を自動変更しない。クライアントが任意指定した種別を検証せず信用しない。
 
 ## 6. 設計上の権限マトリクス案
 
@@ -156,7 +162,7 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 | 状態変更・完了 | 不可 | 可（許可遷移のみ） | 不可 |
 | メッセージ投稿 | 自分の依頼に回答・投稿 | 所属内の依頼へ投稿 | 不可 |
 | 添付登録 | 初期対象外 | 可 | 不可 |
-| 添付参照 | 自分へ返却されたもの | 所属内で許可されたもの | 不可 |
+| 添付参照 | 自分の依頼に返却された成果物（本人識別・権限再確認） | 同一所属内で許可された成果物 | 他人の返却資料・他営業所は不可 |
 | 操作履歴 | 開示範囲未確定 | 許可された依頼の必要項目 | 不可 |
 | 通知キュー直接操作 | 不可 | 不可（内部処理） | 不可 |
 
@@ -164,12 +170,12 @@ Google Apps Scriptとの呼び出し形態（`google.script.run`、`doPost`な�
 
 ## 7. DB対応と更新規則
 
-- `sa_requests`：API-02〜07/11、FN-02/05〜07。担当・進捗は最新行の更新前提条件を検査。
+- `sa_requests`：API-02〜07/11/13/15、FN-02/05〜07。担当・進捗は最新行の更新前提条件を検査。
 - `sa_messages`：API-03/07、FN-08。原則追加、既存発言を削除・差替えしない。
 - `sa_attachments`：API-09/10/11、FN-10。DriveファイルIDは公開無認証URLではない。
 - `sa_activity_log`：API-12、FN-09。監査ログの追記が必要。
 - `sa_notifications`：FN-11/12。送信状態は依頼状態と別管理。
-- `sa_read_cursors`：API-08、FN-13（候補）。
+- `sa_read_cursors`：API-08/14、FN-13。本人別の既読と表示順を管理し、他者設定と分離。
 - `sa_import_log`：FN-14（候補）。
 
 DB側の状態コード候補：`unassigned`→`in_progress`→`waiting_sales`→`in_progress`→`completed`。回答投稿でカード進捗は自動変更せず、完了後もカード操作により再開できる。公開画面で勝手な状態コードを受け付けない。
@@ -203,14 +209,14 @@ DB側の状態コード候補：`unassigned`→`in_progress`→`waiting_sales`�
 
 ## 10. 未確定事項
 
-1. 既存AIメモの現行API・DB、`sa_case`の実体、元IDと所属の取得可能性。
+1. 元DBの「SA依頼｜」と元IDの列は確認済み。残るのはID参照経路・読取権限・連携速度の実検証。
 2. GASと独立画面の通信方式・公開方式、本人確認、利用者マスターの正式仕様。
-3. 関数の正式名称、ファイル分割、APIの引数型・返却データ・ページング・エラーコード。
+3. API-01〜15の論理入出力は本文で定義済み。通信方式・ページング上限・ファイル分割の実装検証は未実施。
 4. 排他・ロック・冪等キーと複数Sheet更新時の復旧方式。
-5. 既読情報の保存方式、スレッドの編集・削除可否。
+5. 既読と本人別順序はsa_read_cursorsに保存。既投稿は上書き・削除せず同一スレッドに訂正追記する。
 6. Driveアップロード・ダウンロードの方式、形式・容量・アクセス権。
 7. 既存マスターに基づくGoogle Chat宛先取得、通知失敗・再送、SA画面内新着の更新間隔。
-8. カードによる状態変更と完了後再開、既存営業AIメモと同じ管理基準。
+8. カードの明示操作と完了後再開は確定済み。実装する排他・認証・運用は既存営業AIメモと整合させる。
 
 ## 11. 変更管理
 
