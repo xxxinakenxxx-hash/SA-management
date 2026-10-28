@@ -5,6 +5,7 @@
 <style>body{font:15px/1.6 sans-serif;margin:16px}pre{background:#f4f4f4;padding:8px;white-space:pre-wrap;word-break:break-all}input{width:100%;box-sizing:border-box}</style></head>
 <body><h3>工程00 外部画面の通信試験</h3>
 <p>このページは試験用です。GAS の /exec を、このページのアドレス末尾（# の後ろ）から受け取って呼び出します。</p>
+<h2 id="head">試験中…</h2>
 <div id="o">準備中…</div>
 <script>
 var out = {}; var root = document.getElementById('o');
@@ -28,8 +29,14 @@ async function tryFetch(label, opt){
   await tryFetch('fetch_credentials_include', {credentials:'include'});
   await tryFetch('fetch_credentials_omit', {credentials:'omit'});
   show();
+  await new Promise(function(r){ setTimeout(r, 3500); });
+  var inc = out.fetch_credentials_include || {};
+  var okFetch = inc.json === true && inc.allowed === true;
+  out.judge = { 通信: okFetch ? '成功' : '失敗', serviceWorker: out.serviceWorker, インストール案内: !!out.installPromptFired };
+  document.getElementById('head').textContent = '通信: ' + out.judge.通信 + ' / SW: ' + out.serviceWorker + ' / インストール案内: ' + (out.installPromptFired ? 'あり' : 'なし');
+  show();
   // 画像リクエストで GAS 側に到達記録を残す（ログインの Cookie が付いて届けば、SA管理表の試験ログに残る）
-  var note = ['inc:'+JSON.stringify(out.fetch_credentials_include).slice(0,120), 'sw:'+out.serviceWorker, 'os:'+out.platform].join(' | ');
+  var note = ['通信:' + out.judge.通信, 'sw:' + out.serviceWorker, 'install:' + !!out.installPromptFired, 'os:' + out.platform, 'w:' + out.width, 'inc:' + JSON.stringify(inc).slice(0, 100)].join(' | ');
   var img = new Image(); img.src = execUrl + '?action=logClient&from=external&note=' + encodeURIComponent(note);
 })();
 </script></body></html>
