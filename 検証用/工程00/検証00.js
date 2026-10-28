@@ -11,6 +11,14 @@ function doGet(e) {
     var who = identify_();
     if (action === 'whoami') {
       out = who;
+    } else if (action === 'me') {
+      // 営業・SA本人の確認用（読み取りのみ）。許可された利用者なら誰でも自分の判定を見られる。
+      if (!who.allowed) return HtmlService.createHtmlOutput('<p>アクセスできません（' + (who.reason || '') + '）</p>');
+      return HtmlService.createHtmlOutputFromFile('me').setTitle('本人確認').addMetaTag('viewport', 'width=device-width,initial-scale=1');
+    } else if (action === 'logClient') {
+      // 外の画面からの到達記録（許可された利用者のみ・短い文字列だけ）
+      if (!who.allowed) { out = { ok: false, denied: true, reason: who.reason }; }
+      else { log_('client', { from: String(e.parameter.from || '').slice(0, 60), note: String(e.parameter.note || '').slice(0, 300), role: who.role }); out = { ok: true }; }
     } else if (!who.allowed) {
       out = { ok: false, denied: true, reason: who.reason };
     } else if (who.role !== 'sysadmin') {
@@ -20,7 +28,7 @@ function doGet(e) {
     } else if (action === 'master') {
       out = { ok: true, result: masterCheck_() };
     } else if (action === 'page') {
-      return HtmlService.createHtmlOutput(pageHtml_()).setTitle('工程00 技術検証');
+      return HtmlService.createHtmlOutputFromFile('page').setTitle('工程00 技術検証').addMetaTag('viewport', 'width=device-width,initial-scale=1');
     } else {
       out = { ok: false, reason: 'unknown_action' };
     }

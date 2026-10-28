@@ -96,8 +96,8 @@ function t4Reset() {
   guard_();
   var sh = testSheet_();
   sh.clear();
-  sh.getRange(1, 1, 1, 5).setValues([['request_id', 'version', 'assignee', 'updated_at', 'note']]);
-  sh.getRange(2, 1, 4, 5).setValues([['R1', 1, '', '', ''], ['R2', 1, '', '', ''], ['R3', 1, '', '', ''], ['R4', 1, '', '', '']]);
+  sh.getRange(1, 1, 1, 5).setValues([['request_id', 'row_version', 'assignee', 'updated_at', 'note']]);
+  sh.getRange(2, 1, 6, 5).setValues([['R1', 1, '', '', ''], ['R2', 1, '', '', ''], ['R3', 1, '', '', ''], ['R4', 1, '', '', ''], ['R5', 1, '', '', ''], ['R6', 1, '', '', '']]);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var lg = ss.getSheetByName('試験_履歴') || ss.insertSheet('試験_履歴');
   lg.clear();
@@ -194,41 +194,30 @@ function drv_(path, opts) {
 
 function t5Drive() {
   guard_();
-  var out = {};
-  // 既存フォルダ（ユーザーが作ったSA管理フォルダ）が扱えるか
-  var ex = drv_('files/' + SA_FOLDER_ID_ + '?fields=id,name&supportsAllDrives=true');
-  out.existingFolderVisible = ex.code === 200;
-  out.existingFolderCode = ex.code;
-  // 営業AIの表のファイルが扱えるか（書き込みにつながる経路がないことの確認）
-  var sales = drv_('files/' + SALES_DB_ID_ + '?fields=id&supportsAllDrives=true');
-  out.salesDbVisibleToDriveScope = sales.code === 200;
-  out.salesDbCode = sales.code;
-  // 既存フォルダの下に新規作成できるか
-  var folder = null;
-  try {
-    folder = Drive.Files.create({ name: '試験_鹿児島', mimeType: 'application/vnd.google-apps.folder', parents: [SA_FOLDER_ID_] });
-    out.createUnderExistingFolder = 'ok';
-  } catch (e) {
-    out.createUnderExistingFolder = 'ng: ' + String(e.message).slice(0, 200);
-  }
-  if (!folder) {
-    folder = Drive.Files.create({ name: '試験_鹿児島(root)', mimeType: 'application/vnd.google-apps.folder' });
-    out.createdAtRootInstead = true;
-  }
-  out.testFolderId = folder.id;
-  // 保存（フォルダ内にテキストファイル）
+  var out = { part1_driveFileFolder: {}, part2_existingFolder: {} };
+  // (1) drive.file で自分が作るフォルダ（マイドライブ直下）
+  var p1 = out.part1_driveFileFolder;
+  var folder = Drive.Files.create({ name: '試験_drive.file', mimeType: 'application/vnd.google-apps.folder' });
+  p1.folderCreated = !!folder.id;
   var blob = Utilities.newBlob('工程00 試験ファイル(架空)', 'text/plain', '試験_添付.txt');
   var f = Drive.Files.create({ name: '試験_添付.txt', parents: [folder.id] }, blob);
-  out.saved = !!f.id;
-  // 取り出し
+  p1.saved = !!f.id;
   var got = drv_('files/' + f.id + '?alt=media');
-  out.readBack = got.code === 200 && got.text.indexOf('工程00') >= 0;
-  // 権限の種類（人数と種類だけ）
+  p1.readBack = got.code === 200 && got.text.indexOf('工程00') >= 0;
   var perm = drv_('files/' + f.id + '/permissions?fields=permissions(type,role)');
-  try { out.permissions = JSON.parse(perm.text).permissions.map(function (p) { return p.type + '/' + p.role; }); } catch (e) { out.permissions = 'error:' + perm.code; }
-  var fm = drv_('files/' + f.id + '?fields=parents,webViewLink');
-  try { var j = JSON.parse(fm.text); out.parentIsExistingFolder = (j.parents || []).indexOf(SA_FOLDER_ID_) >= 0; } catch (e) {}
-  // 権限外：リンクを知る全員に開く設定にはしない（変更しない）。
+  try { p1.permissions = JSON.parse(perm.text).permissions.map(function (p) { return p.type + '/' + p.role; }); } catch (e) { p1.permissions = 'error:' + perm.code; }
+  // (2) ユーザーが作った既存フォルダ（SA管理フォルダ）
+  var p2 = out.part2_existingFolder;
+  var ex = drv_('files/' + SA_FOLDER_ID_ + '?fields=id&supportsAllDrives=true');
+  p2.canSeeFolder = ex.code === 200; p2.seeCode = ex.code;
+  try {
+    var f2 = Drive.Files.create({ name: '試験_既存フォルダ内.txt', parents: [SA_FOLDER_ID_] }, Utilities.newBlob('x', 'text/plain', '試験_既存フォルダ内.txt'));
+    p2.saveInside = !!f2.id;
+  } catch (e) { p2.saveInside = false; p2.saveError = String(e.message).slice(0, 160); }
+  // 営業AIの表のファイルは Drive の権限範囲から見えるか（見えなければ触れない）
+  var sales = drv_('files/' + SALES_DB_ID_ + '?fields=id&supportsAllDrives=true');
+  out.salesDbReachableByDriveFileScope = sales.code === 200;
+  out.salesDbCode = sales.code;
   log_('t5', out);
   return out;
 }
@@ -262,12 +251,12 @@ var AI_SCHEMA_ = {
       request_type: { type: ['string', 'null'] }, decided: { type: ['string', 'null'] }, due: { type: ['string', 'null'] } } }
 };
 
-function extract_(model, text, maxTry) {
+function extract_(model, text, maxTry, simulate503) {
   var sys = 'あなたはSA依頼の文章から5項目を取り出す。書かれていない項目はnullにする。推測で補わない。' +
     '項目：to_whom=誰に、what=何を、request_type=依頼の種類、decided=決まっていること、due=いつまで。';
   var tries = [], i;
   for (i = 0; i < (maxTry || 3); i++) {
-    var r = ai_('chat/completions', { model: model, temperature: 0,
+    var r = (simulate503 && i < simulate503) ? { code: 503, text: 'simulated' } : ai_('chat/completions', { model: model, temperature: 0,
       messages: [{ role: 'system', content: sys }, { role: 'user', content: text }],
       response_format: { type: 'json_schema', json_schema: AI_SCHEMA_ } });
     tries.push(r.code);
@@ -298,10 +287,102 @@ function t6Extract(model) {
 }
 
 // 再試行の確認：存在しないモデル名で呼び、4xxは再試行せず即座に失敗として返すことを見る。
-function t6BadRequest() {
+function t6BadRequest(model) {
   guard_();
   var r = extract_('no-such-model-xyz', '架空', 3);
-  var out = { ok: r.ok, tries: r.tries, error: (r.error || '').slice(0, 120) };
+  var sim = extract_(model, '福岡の田中さんに、新商品Aの価格表を作ってほしい。来週金曜まで。', 3, 2);
+  var out = { badModel: { ok: r.ok, tries: r.tries, error: (r.error || '').slice(0, 120) },
+    retryAfterTwoSimulated503: { ok: sim.ok, tries: sim.tries, usage: sim.usage } };
   log_('t6bad', out);
   return out;
 }
+
+
+// ---- 試験① 取込の冪等性（営業AIの表は読むだけ。SA管理表の試験用シートに record_id 単位で取り込む）
+function sheet_(name, header) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name); sh.getRange(1, 1, 1, header.length).setValues([header]); }
+  return sh;
+}
+
+function t1Import() {
+  guard_();
+  var v = open_('deal_records');
+  var c = colIndex_(v[0]);
+  var sh = sheet_('試験_取込', ['record_id', 'created_at', 'branch_name', 'text_length', 'imported_at']);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(15000)) return { result: 'lock_timeout' };
+  try {
+    var have = {};
+    var last = sh.getLastRow();
+    if (last > 1) sh.getRange(2, 1, last - 1, 1).getValues().forEach(function (r) { have[String(r[0])] = true; });
+    var src = 0, inserted = 0, skipped = 0, rows = [];
+    for (var i = 1; i < v.length; i++) {
+      var id = String(v[i][c.record_id]).trim();
+      if (!id || String(v[i][c.deal_theme]).indexOf(SA_PREFIX_) !== 0) continue;
+      src++;
+      if (have[id]) { skipped++; continue; }
+      have[id] = true;
+      rows.push([id, String(v[i][c.created_at]), String(v[i][c.branch_name]).trim(), String(v[i][c.original_text]).length, new Date().toISOString()]);
+      inserted++;
+    }
+    if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 5).setValues(rows);
+    SpreadsheetApp.flush();
+    return { sourceSaRows: src, inserted: inserted, skippedAsDuplicate: skipped, totalRowsAfter: sh.getLastRow() - 1 };
+  } finally { lock.releaseLock(); }
+}
+
+function t1Reset() { guard_(); var sh = sheet_('試験_取込', ['record_id', 'created_at', 'branch_name', 'text_length', 'imported_at']); if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1); return { ok: true }; }
+
+// ---- 試験② 他営業所分離：営業所をまたぐ参照を拒否できるか
+function branchAllowed_(who, requestBranch) {
+  if (!who.allowed) return false;
+  if (who.role === 'sysadmin') return true;
+  return who.branch === requestBranch;
+}
+
+function t2Branch() {
+  guard_();
+  var master = open_('user_master');
+  var c = colIndex_(master[0]);
+  var firstByBranch = {};
+  for (var i = 1; i < master.length; i++) {
+    var k = String(master[i][c.user_key]).trim();
+    if (!k || String(master[i][c.role]).trim() !== 'sales' || String(master[i][c.active_flag]).trim() !== '有効') continue;
+    var b = String(master[i][c.master_branch_name]).trim();
+    if (!firstByBranch[b]) firstByBranch[b] = k;
+  }
+  var branches = Object.keys(firstByBranch), ok = 0, ng = 0;
+  branches.forEach(function (own) {
+    var who = lookup_(firstByBranch[own], master);
+    branches.forEach(function (target) {
+      var allowed = branchAllowed_(who, target);
+      if (own === target) { if (allowed) ok++; else ng++; } else { if (!allowed) ok++; else ng++; }
+    });
+  });
+  var out = { branches: branches.length, checks: branches.length * branches.length, correct: ok, wrong: ng };
+  log_('t2branch', out);
+  return out;
+}
+
+// ---- 試験② (b)(c) 本人確認画面用（読み取りのみ）
+function meInfo() {
+  var who = lookup_(Session.getActiveUser().getEmail() || '');
+  if (!who.allowed) throw new Error('denied:' + who.reason);
+  var sh = sheet_('試験_取込', ['record_id', 'created_at', 'branch_name', 'text_length', 'imported_at']);
+  var last = sh.getLastRow(), mine = 0, others = 0;
+  if (last > 1) sh.getRange(2, 3, last - 1, 1).getValues().forEach(function (r) { if (String(r[0]) === who.branch) mine++; else others++; });
+  var out = { role: who.role, roleClass: roleClass_(who.role), branch: who.branch, active_flag: who.active_flag,
+    allowed: who.allowed, visibleRowsInOwnBranch: mine, rowsInOtherBranchesDenied: others,
+    crossBranchRequest: branchAllowed_(who, '福岡本社') ? 'allowed' : 'denied' };
+  log_('me', out);
+  return out;
+}
+
+function savePhone(info) { var who = lookup_(Session.getActiveUser().getEmail() || ''); if (!who.allowed) throw new Error('denied'); log_('device', info); return true; }
+
+// ---- 試験⑦ 新着表示
+function t7Add() { guard_(); var sh = sheet_('試験_新着', ['at', 'note']); sh.appendRow([new Date().toISOString(), '試験の新着行']); SpreadsheetApp.flush(); return { rows: sh.getLastRow() - 1 }; }
+function t7Count() { var who = lookup_(Session.getActiveUser().getEmail() || ''); if (!who.allowed) throw new Error('denied'); return sheet_('試験_新着', ['at', 'note']).getLastRow() - 1; }
+function t7Reset() { guard_(); var sh = sheet_('試験_新着', ['at', 'note']); if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1); return { ok: true }; }

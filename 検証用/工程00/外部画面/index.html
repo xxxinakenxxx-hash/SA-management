@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1a73e8">
+<title>工程00 外部画面の通信試験</title>
+<style>body{font:15px/1.6 sans-serif;margin:16px}pre{background:#f4f4f4;padding:8px;white-space:pre-wrap;word-break:break-all}input{width:100%;box-sizing:border-box}</style></head>
+<body><h3>工程00 外部画面の通信試験</h3>
+<p>このページは試験用です。GAS の /exec を、このページのアドレス末尾（# の後ろ）から受け取って呼び出します。</p>
+<div id="o">準備中…</div>
+<script>
+var out = {}; var root = document.getElementById('o');
+function show(){ root.textContent=''; var p=document.createElement('pre'); p.textContent=JSON.stringify(out,null,1); root.appendChild(p); }
+var execUrl = decodeURIComponent((location.hash||'').slice(1));
+out.pageOriginKind = location.hostname.endsWith('github.io') ? 'github.io' : location.protocol;
+out.isSecureContext = window.isSecureContext;
+out.manifestLink = !!document.querySelector('link[rel=manifest]');
+out.standalone = window.matchMedia('(display-mode: standalone)').matches;
+out.width = window.innerWidth;
+out.platform = (navigator.userAgentData && navigator.userAgentData.platform) || (/iPhone|iPad/.test(navigator.userAgent) ? 'iOS' : /Android/.test(navigator.userAgent) ? 'Android' : 'PC');
+window.addEventListener('beforeinstallprompt', function(){ out.installPromptFired = true; show(); });
+async function tryFetch(label, opt){
+  try{ var r = await fetch(execUrl + '?action=whoami', opt); var t = await r.text(); var j = null; try{ j = JSON.parse(t); }catch(e){}
+    out[label] = {status:r.status, type:r.type, redirected:r.redirected, json:!!j, allowed:j&&j.allowed, role:j&&j.role, head:j?'':t.slice(0,50)};
+  }catch(e){ out[label] = {error:String(e&&e.message||e).slice(0,100)}; }
+}
+(async function(){
+  if('serviceWorker' in navigator){ try{ var reg = await navigator.serviceWorker.register('sw.js'); out.serviceWorker='registered'; }catch(e){ out.serviceWorker='ng: '+String(e&&e.message||e).slice(0,80); } } else { out.serviceWorker='unsupported'; }
+  if(!execUrl){ out.note='アドレスの末尾に #（/execのURL）がありません'; show(); return; }
+  await tryFetch('fetch_credentials_include', {credentials:'include'});
+  await tryFetch('fetch_credentials_omit', {credentials:'omit'});
+  show();
+  // 画像リクエストで GAS 側に到達記録を残す（ログインの Cookie が付いて届けば、SA管理表の試験ログに残る）
+  var note = ['inc:'+JSON.stringify(out.fetch_credentials_include).slice(0,120), 'sw:'+out.serviceWorker, 'os:'+out.platform].join(' | ');
+  var img = new Image(); img.src = execUrl + '?action=logClient&from=external&note=' + encodeURIComponent(note);
+})();
+</script></body></html>

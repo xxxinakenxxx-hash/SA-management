@@ -1,0 +1,16 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font:15px/1.6 sans-serif;margin:16px}pre{background:#f4f4f4;padding:8px;white-space:pre-wrap;word-break:break-all}</style></head>
+<body><h3>本人確認（読み取りのみ）</h3><div id="o">確認中…</div>
+<script>
+function pwaInfo(){
+  return { isSecureContext: window.isSecureContext, originHost: location.hostname.replace(/^[^.]+\./, '*.'),
+    serviceWorkerApi: 'serviceWorker' in navigator, manifestLink: !!document.querySelector('link[rel=manifest]'),
+    standalone: window.matchMedia('(display-mode: standalone)').matches, width: window.innerWidth,
+    touch: 'ontouchstart' in window, platform: (navigator.userAgentData && navigator.userAgentData.platform) || (/iPhone|iPad/.test(navigator.userAgent) ? 'iOS' : /Android/.test(navigator.userAgent) ? 'Android' : 'PC') };
+}
+google.script.run.withSuccessHandler(function(v){
+  var p = pwaInfo(); var a = document.createElement('pre'); a.textContent = JSON.stringify({判定: v, 端末: p}, null, 1);
+  document.getElementById('o').textContent = ''; document.getElementById('o').appendChild(a);
+  google.script.run.savePhone({judge: v, device: p});
+}).withFailureHandler(function(e){ document.getElementById('o').textContent = '拒否または失敗: ' + (e && e.message || e); }).meInfo();
+</script></body></html>
