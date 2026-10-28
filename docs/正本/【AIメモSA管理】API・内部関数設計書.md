@@ -47,7 +47,7 @@
 
 エラーコード文字列も暫定案。
 
-## 3. 外部画面からのAPI機能一覧（論理API）
+## 3. 画面からのAPI機能一覧（論理API）
 
 | API ID | 名称案 | 呼び出し元 | 入力の要点 | 出力・副作用 | 要件 |
 | --- | --- | --- | --- | --- | --- |
@@ -59,7 +59,7 @@
 | API-06 | `changeRequestStatus` | SA | request_id、次状態（未担当／対応中／営業回答待ち）、前提条件 | カードの明示操作による進捗更新・履歴追加。完了登録はAPI-11のみ | FR-08/14 |
 | API-07 | `postMessage` | SA/営業 | request_id、body、message_type、client_operation_id、corrects_message_id（任意）、attachment_id（任意） | 追加メッセージのmessage_id。質問は営業宛Google Chatキュー。カード状態は変更しない | FR-09/10/11/15/16 |
 | API-08 | `markThreadRead` | SA/営業 | request_id、既読位置 | 当該本人の既読情報更新 | FR-11 |
-| API-09 | `registerAttachment` | SA | request_id、ファイル参照/データ方式未定 | Drive保存・添付参照と履歴 | FR-12/14 |
+| API-09 | `registerAttachment` | SA | request_id、GAS内画面から`google.script.run`で送り、`drive.file`で保存 | Drive保存・添付参照と履歴 | FR-12/14 |
 | API-10 | `getAttachmentAccess` | SA/営業 | attachment_id、request_id | 認可済みファイルの安全な参照導線 | FR-12/18/19 |
 | API-11 | `completeRequest` | SA | request_id、完了コメント、返却添付ID群（0件可）、更新前提条件 | 唯一の完了登録経路。完了状態・履歴を保存しGoogle Chat通知を別キュー管理 | FR-13/14/16 |
 | API-12 | `getActivityHistory` | SA（営業は公開対象のみ） | request_id、ページング | 認可範囲の操作履歴 | FR-14 |
@@ -80,7 +80,7 @@
 
 ### 3.2 営業所別Drive設定
 
-新しいSA設定画面やSA管理者ロールは作らない。既存運用権限でSA管理GASのScript Propertiesキー`SA_DRIVE_FOLDER_<branch_id>`を管理する。ファイル登録時に認証済みSAの所属`branch_id`からフォルダIDを読み、フォルダ到達・書込権限を検査する。キー欠落・権限不足・不正フォルダなら`STORAGE_ERROR`として保存しない。設定変更は既存運用記録に操作者・日時・対象営業所を残す。
+新しいSA設定画面やSA管理者ロールは作らない。既存運用権限でSA管理GASのScript Propertiesキー`SA_DRIVE_FOLDER_<branch_id>`を管理する。ファイル登録時に認証済みSAの所属`branch_id`からフォルダIDを読み、フォルダ到達・書込権限を検査する。キー欠落・権限不足・不正フォルダなら`STORAGE_ERROR`として保存しない。設定変更は既存運用記録に操作者・日時・対象営業所を残す。設定・変更は管理者（ユーザー本人）がGASのスクリプトプロパティで行い、`tasks/CHAT_CURRENT.md` に記録する。
 
 ## 4. バッチ・内部関数一覧（候補）
 
@@ -100,9 +100,9 @@
 | FN-12 | `deliverPendingNotifications_` | 営業AIと同じGoogle Chat Webhook（部屋への通知）へ送信・再試行・状態記録。本人宛ての個別送信は行わない。配送結果で依頼状態を変えない | `sa_notifications` |
 | FN-13 | `readThreadCursor_` | 未読位置の参照・更新 | `sa_read_cursors`候補 |
 | FN-14 | `recordImportOutcome_` | 取込結果・失敗・再試行経過 | `sa_import_log`候補 |
-| FN-15 | `extractSaRequestFields_` | OpenAI APIで5項目を抽出してsa_requestsの正式列へ保存。抽出不可はnull、状態pending/complete/needs_review/failed。実データ送信・課金は別途許可 | sa_requests抽出5列・原文・状態 |
+| FN-15 | `extractSaRequestFields_` | OpenAI APIで5項目を抽出してsa_requestsの正式列へ保存。抽出不可はnull、状態pending/complete/needs_review/failed。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。本物の依頼文の送信は1件ずつユーザー許可を得る。 | sa_requests抽出5列・原文・状態 |
 
-上記は論理責務を整理する仮の関数名。GASの`doGet`/`doPost`への具体的振り分け、トリガー起動方式、関数ファイル分割、公開操作許可リストは技術検証後に確定。内部関数はクライアントに直接公開しない。
+上記は論理責務を整理する仮の関数名。取込は5分ごとの時間主導トリガーで起動する。GASの`doGet`の`view`による具体的振り分け、関数ファイル分割、公開操作許可リストは実装時に確定。内部関数はクライアントに直接公開しない。
 
 ## 5. 主要処理フロー
 
@@ -119,7 +119,7 @@
 1. 権限確認済みの新システム内部処理が、既存`deal_records`をSheets API読み取り専用（`spreadsheets.readonly`）で読み取る（`SpreadsheetApp.openById`は編集権限を要求するため使わない）。現行GASにSA依頼専用取得APIはない。
 2. `branch_name`の営業所名の文字列で鹿児島を対象に限定し（利用者は`user_master.master_branch_name`、依頼は`deal_records.branch_name`。`branch_id`は営業所名）、`deal_theme`の「SA依頼｜」で選別する。`sa_case`は現行GASの一時分類でありDB上の独立列ではない。
 3. `record_id`だけを取込識別キーとし、必要な`user_key`・`branch_name`・`deal_theme`・`original_text`を元レコードIDにより権限付きで取得して取込時のスナップショットとして保存する。`deal_content`は必要時のみ保持。非SA商談は複製しない。元データを変更しない。
-4. 新内部関数候補`extractSaRequestFields_`（FN-15案）が、`deal_theme`と`original_text`を主入力に「誰に／何を／依頼の種類／決まっていること／いつまで」を構造化し、`sa_requests`の対応列へ保存する。曖昧・不明項目を創作せず抽出状態に記録し、元文章を消さない。
+4. 新内部関数候補`extractSaRequestFields_`（FN-15案）が、`deal_theme`と`original_text`を主入力に「誰に／何を／依頼の種類／決まっていること／いつまで」を構造化し、`sa_requests`の対応列へ保存する。曖昧・不明項目を創作せず抽出状態に記録し、元文章を消さない。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。本物の依頼文の送信は1件ずつユーザー許可を得る。
 5. 取込成功後の担当・状態・スレッド・添付・履歴・通知は新SA管理側が制御する。失敗時に元ID・元文章を維持し再試行可能とする。旧「SA案件」の他拠点過去データは対象外。
 
 これらは**新SA管理側の実装候補**であり、現行GASに存在するとは扱わない。既存GASのSA依頼受付・追加質問・保存処理は変更しない。鹿児島の所属判定、取得権限、通信・認証は工程00で確認済み。AI構造化精度は未検証（工程05で確認）。
@@ -182,7 +182,7 @@ DB側の状態コード候補：`unassigned`→`in_progress`→`waiting_sales`�
 
 ## 8. 非機能・安全設計
 
-- **認証**：GAS Webアプリの実行主体とログイン利用者識別の成立を確認。画面から渡すメール文字列だけで本人確定しない。
+- **認証**：営業AIと同じ本人判定（`Session.getActiveUser().getEmail()`と`user_master.user_key`の照合）で確定。公開は実行＝デプロイ者、アクセス＝組織内。画面から渡すメール文字列だけで本人確定しない。
 - **通信**：画面はGAS内に置き、`google.script.run`で呼び出す。別オリジンからの通信は行わない。
 - **CSRF等**：公開方式に応じ、セッション不正利用・不正操作・再送対策を設計。
 - **排他**：Sheetsに対する同時引受・投稿・状態更新の競合を防ぐ。ロック方式と順序を検証。
@@ -202,7 +202,7 @@ DB側の状態コード候補：`unassigned`→`in_progress`→`waiting_sales`�
 | AT-05 | 質問保存失敗 | 投稿保存失敗を通知し、カード進捗は変更しない |
 | AT-06 | 完了と添付返却 | 所属営業所の営業は依頼と完了内容を閲覧可能。成果物は別途認可し無権限の取得を拒否 |
 | AT-07 | 通知配送失敗 | 本体業務記録は保ち、通知だけ再試行対象 |
-| AT-08 | 別オリジン通信・Google認証 | 実際の端末・ブラウザで正常系・拒否系を確認 |
+| AT-08 | GAS内画面での本人判定と拒否（工程02で試験） | 実際の端末・ブラウザで正常系・拒否系を確認 |
 | AT-09 | SA画面内新着 | 画面起動中の新規依頼と営業返信の新着表示を確認 |
 
 これは**試験計画**であり、いずれも未実施・未合格。
