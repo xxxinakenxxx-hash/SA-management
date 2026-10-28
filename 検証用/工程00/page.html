@@ -46,14 +46,20 @@ function pwaInfo(){
   summary.model=model; say('使うモデル: '+model);
   if(model){ await step('6_5項目抽出(架空)', async function(){ return await srv('t6Extract', model); });
              await step('6_再試行', async function(){ return await srv('t6BadRequest', model); }); }
-  // ⑦ 新着表示（3秒ごとに問い合わせ、5秒後に行を足して、画面に出るまでの秒数を測る）
+  // ⑦ 新着表示（3秒ごとに問い合わせる画面で、行を足してから画面に出るまでの秒数を5回測る）
   await step('7_新着表示', async function(){
-    await srv('t7Reset'); var base=(await srv('t7Count')).v; var polls=0, addedAt=null, seenAt=null; var start=Date.now();
-    var timer=setInterval(async function(){ var c=await srv('t7Count'); polls++; if(addedAt && !seenAt && c.ok && c.v>base){ seenAt=Date.now(); } }, 3000);
-    await sleep(5000); await srv('t7Add'); addedAt=Date.now();
-    var waited=0; while(!seenAt && waited<30000){ await sleep(500); waited+=500; }
+    await srv('t7Reset'); var latest=(await srv('t7Count')).v||0; var polls=0;
+    var timer=setInterval(async function(){ var c=await srv('t7Count'); polls++; if(c.ok) latest=c.v; }, 3000);
+    var trials=[];
+    for (var i=0;i<5;i++){
+      var base=latest; await sleep(500+Math.floor(Math.random()*2500));
+      var add=await srv('t7Add'); var t0=Date.now(); var waited=0;
+      while(latest<=base && waited<20000){ await sleep(200); waited+=200; }
+      trials.push(latest>base ? Math.round((Date.now()-t0)/100)/10 : null);
+    }
     clearInterval(timer);
-    return {pollIntervalSec:3, secondsUntilShown: seenAt ? Math.round((seenAt-addedAt)/100)/10 : null, polls:polls}; });
+    var ok=trials.filter(function(x){return x!==null;});
+    return {pollIntervalSec:3, trialsSeconds:trials, maxSeconds:ok.length?Math.max.apply(null,ok):null, polls:polls}; });
   // ⑨(A) PWA条件（この画面の中で）
   await step('9A_PWA条件', async function(){
     var info=pwaInfo(); try{ await navigator.serviceWorker.register('/sw.js'); info.swRegister='ok'; }catch(e){ info.swRegister='ng: '+String(e&&e.message||e).slice(0,100); } return info; });
