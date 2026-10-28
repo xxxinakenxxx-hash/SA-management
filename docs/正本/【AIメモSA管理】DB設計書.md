@@ -1,7 +1,7 @@
 # 【AIメモSA管理】DB設計書
 
 作成日：2026-10-20  
-文書状態：承認済み推奨案を反映したDB設計（物理シート未作成・実体未検証）  
+文書状態：業務方針確定・技術検証済み（工程00、2026-10-28）・実装未着手（物理シート未作成）  
 初期導入：鹿児島営業所、将来は複数営業所
 
 ## 1. 目的・参照資料・前提
@@ -31,7 +31,7 @@
 | 既読位置 | `sa_read_cursors` | `cursor_id` | 利用者別・依頼別の閲覧位置（方式候補） |
 | 取込実行履歴 | `sa_import_log` | `import_event_id` | 取込成否・失敗再試行（方式候補） |
 
-社員・営業所マスターは営業AIメモの既存マスターを直接参照する。SA管理DBへ複製・同期しない。参照キー・接続権限・本人と所属照合の技術条件は検証する。
+社員・営業所マスターは営業AIメモの既存マスターを直接参照する。SA管理DBへ複製・同期しない。参照キーは `user_master.user_key`（本人）と `master_branch_name`（所属。営業所名の文字列）。営業AIの表はSheets API読み取り専用（`spreadsheets.readonly`）で参照する。本人は `Session.getActiveUser().getEmail()` と `user_key` の照合で判定し、`active_flag` が「有効」の利用者だけを許可する（SA＝`sales_support`、営業＝`sales`）。
 
 ## 4. 列定義案
 
@@ -61,7 +61,7 @@
 | `source_original_text` | String | 元依頼原文の取込時スナップショット（保持）。元データはrecord_idで必要時参照 |
 | `source_deal_content` | String/null | 元の補助テキスト。存在する場合のみ保持 |
 | `source_user_key` | String | 元レコードの依頼者キー |
-| `source_branch_name` | String | 元レコード所属名。branch_idは既存マスターから解決 |
+| `source_branch_name` | String | 元レコード所属名（`deal_records.branch_name`）。`branch_id` は営業所名の文字列 |
 | `sa_recipient` | String/null | OpenAI抽出：誰に。判断不能はnull |
 | `sa_action` | String/null | OpenAI抽出：何を。判断不能はnull |
 | `sa_request_type` | String/null | OpenAI抽出：依頼の種類 |
@@ -86,16 +86,16 @@
 | `original_text` | `source_original_text` | 元の文章を保持してAI構造化に利用 |
 | `deal_content` | `source_deal_content` | 補助資料。原文を置き換えない |
 | `user_key` | `sales_user_id`, `source_user_key` | 依頼者の対応 |
-| `branch_name` | `branch_id`, `source_branch_name` | 鹿児島所属をマスター照合して判定 |
+| `branch_name` | `branch_id`, `source_branch_name` | 営業所名の文字列で判定（`branch_id` は営業所名。利用者は `user_master.master_branch_name`、依頼は `deal_records.branch_name`） |
 | `created_at` | `source_recorded_at` | 元記録日時 |
 
 抽出5項目・期限の解釈値・抽出状態は§4.1の正式列へ統合済み。元文章を保持し、欠落した値はnullとする。
 
 現行DBには`sa_case`・`record_type`の独立列やSA専用5項目の独立列はない。ただしSA依頼情報は`deal_theme`・`original_text`等に文章として残っており、独立列がないことを内容欠落と同一視しない。新システムがAIで5項目へ構造化し、抽出できない項目は未確認とする。元DBは変更しない。
 
-初期取込対象は鹿児島の「SA依頼｜」レコード。旧「SA案件」の他拠点・過去データの移行は対象外。営業所の照合、読取権限、AI解析結果の実データ検証は未了。
+初期取込対象は鹿児島の「SA依頼｜」レコード。旧「SA案件」の他拠点・過去データの移行は対象外。AI解析結果の実データ検証は工程05で確認する。
 
-元データの取込では`source_record_id`のみを連携・重複識別の軸とし、元列は権限付き参照から必要分だけ取り込み時点のスナップショットとして保存する。新DBは非SA商談の全文コピーではなく、SA依頼のみを保存する。元データの更新・複製マスターは行わない。元ID読取の実通信成立は未検証。
+元データの取込では`source_record_id`のみを連携・重複識別の軸とし、元列は権限付き参照から必要分だけ取り込み時点のスナップショットとして保存する。新DBは非SA商談の全文コピーではなく、SA依頼のみを保存する。元データの更新・複製マスターは行わない。元ID読取の実通信は工程00で確認済み（Sheets API読み取り専用）。
 
 ### 4.2 `sa_messages`
 
@@ -154,15 +154,15 @@
 | `request_id` | String | 対象依頼 |
 | `recipient_user_id` | String | 受信者 |
 | `event_type` | String | 新規依頼・営業質問・営業回答・完了など |
-| `channel` | String | `google_chat`（SA質問・完了時の営業への個別通知）。SA新着は画面起動中の表示で扱い、閉アプリPushやメール配送は行わない |
-| `delivery_status` | String | `pending/sent/failed`。`sent`はGoogle Chat送信APIの受理を示し、営業の開封を意味しない |
+| `channel` | String | `google_chat`（SA質問・完了時の営業への通知。営業AIと同じWebhook＝部屋への通知で、本人宛ての個別送信は行わない）。SA新着は画面起動中の表示（3秒ごとの問い合わせ）で扱い、閉アプリPushやメール配送は行わない |
+| `delivery_status` | String | `pending/sent/failed`。`sent`はGoogle Chat Webhookの受理（HTTP 2xx）を示し、営業の開封を意味しない |
 | `attempt_count` | Integer | 試行回数 |
 | `next_retry_at` | DateTime | 次回試行予定 |
 | `sent_at` | DateTime | 成功と判断した日時 |
 | `last_error_code` | String | 個人情報を含まない失敗識別情報 |
 | `created_at` | DateTime | 作成日時 |
 
-業務データ保存の成否と通知送信の成否は分離する。配信方式確定前に`sent`の意味（受理・配送・開封）を決めない。
+業務データ保存の成否と通知送信の成否は分離する。送信結果は`sa_notifications`に記録し、配送結果で依頼状態を変えない。`sent`はWebhookの受理を示し、配送・開封は意味しない。
 
 ### 4.6 `sa_read_cursors`／`sa_import_log`（候補）
 
@@ -175,7 +175,7 @@
 - **SA備考・期限**：`sa_requests.sa_note`、`sa_due_date_text`、`sa_due_date`、`sa_due_urgent`に保存。期限手動訂正は原文スナップショットを維持し、訂正者・日時・監査履歴を記録する。
 - **本人別並び順**：7シート内の`sa_read_cursors`に`user_id × request_id`を一意キーとして`sort_order`を格納。新規依頼は末尾へ、並び順未設定なら受付日時とrequest_id順。操作した本人の行だけロック下で並べ直し、他のSAの設定は不変。担当・状態は`sa_requests`にある共有値を使う。
 - **営業所別Drive保存先**：7シートの外に新しい管理シートを増やさず、**SA管理GASのScript Properties**へ`SA_DRIVE_FOLDER_<branch_id>`のキーで既存DriveフォルダIDを設定する。これは利用者マスターの複製ではなく、営業所別のアプリ設定値。既存の運用権限で設定・更新し、独立管理画面とSA管理者ロールは追加しない。未設定・到達不能・権限不足ならファイル登録を拒否し、既存の設定値を勝手に補完しない。設定変更は日時・変更者・対象営業所を運用記録に残す。
-- **排他と復旧**：依頼更新は`LockService`下で`row_version`を検証する。メッセージと通知は操作IDで再実行を冪等化。Drive保存成功後にSheets登録が失敗した場合は対応するIDを失敗ログに記録し、孤立ファイルを追跡して復旧する。通知送信の成否で依頼状態は変更しない。
+- **排他と復旧**：依頼更新は`LockService.getScriptLock`下で`row_version`を検証する。複数セルの書き込みの途中で失敗した場合は、巻き戻し（補償）で整合に戻す。メッセージと通知は操作IDで再実行を冪等化。Drive保存成功後にSheets登録が失敗した場合は対応するIDを失敗ログに記録し、孤立ファイルを追跡して復旧する。通知送信の成否で依頼状態は変更しない。
 
 ## 5. 論理関係
 
@@ -219,12 +219,12 @@ sa_requests (request_id, branch_id, sales_user_id, assigned_sa_user_id)
 
 ### 7.1 2026-10-23の連携設計・未承認条件
 
-既存の`record_id`を参照キーとし、SA依頼のIDを新SA側へ連携する方式を優先検証する。新SAの業務レコードにはSA依頼だけを登録し、元`record_id`で重複を防ぎ、関連列は必要時に参照する。元DBへの列追加の必要性、関数連携速度、後続処理は実環境または隔離試験で確定する。**今回、元DBに列を追加したものではない。** 5項目のAI抽出については、OpenAI APIは採用済み。送信する原文等の範囲・使用モデル・費用・実データ通信が別途承認されるまで外部通信・課金を行わない。
+取込は`record_id`を鍵に、ロック内で既存確認→追加する（冪等）。新SAの業務レコードにはSA依頼だけを登録し、元列は取込時のスナップショットとして`sa_requests`に保存する。実行は5分ごとの時間主導トリガー（設計側の初期値）。**元DBに列は追加しない。** 5項目のAI抽出については、OpenAI APIは採用済み。送信する原文等の範囲・使用モデル・費用・実データ通信が別途承認されるまで外部通信・課金を行わない。
 
 ## 8. 未確定事項・確認事項
 
-1. `deal_records`の対象列と「SA依頼｜」保存形式は確認済み。残件は読取権限・元IDの一意範囲・マスター照合（SA-033／SA-037）。
-2. 利用者マスター・営業所マスターの物理名、キー、所属・権限照合方法。
+1. 確認済み（工程00）：`deal_records`の対象列と「SA依頼｜」保存形式。読取はSheets API読み取り専用。`record_id`は全体・SA行とも重複0件。所属の照合は営業所名の文字列で行う。
+2. 確定済み：`user_master`の列は`user_key`、`user_fullname`、`master_branch_name`、`active_flag`、`role`、`chat_id`、`company_name`。本人は`user_key`、所属は`master_branch_name`、権限は`role`（SA＝`sales_support`、営業＝`sales`）で判定し、`active_flag`が「有効」のみ許可する。`branch_master`は空のため使わない。
 3. 7シートの名称・主要列は本文で定義済み。実シートの列順・文字数上限・初期データは実装前の照合対象。
 4. 元IDの一意範囲、再取込時の更新許可範囲。
 5. カード側の明示的な状態変更、担当変更時の競合、完了後再開、添付差替えの詳細処理。スレッド投稿からの自動状態変更はしない。
