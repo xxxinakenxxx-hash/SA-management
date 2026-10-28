@@ -21,6 +21,7 @@ function pwaInfo(){
   await step('2a_本人判定', async function(){ return await srv('t2Judge'); });
   await step('2a_他営業所分離', async function(){ return await srv('t2Branch'); });
   await step('3_拒否の判定', async function(){ return await srv('t3Gate'); });
+  await step('2b_本人確認画面', async function(){ return await srv('meInfo'); });
   // ③(A) GAS内の画面：この画面自体が google.script.run で動いている。参考として、画面の中から /exec を fetch した結果も取る（独立画面の近似）。
   await step('3A_画面内からの/exec呼び出し', async function(){
     var u=await srv('getExecUrl'); if(!u.ok) return u; var out={};

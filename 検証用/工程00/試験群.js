@@ -10,7 +10,16 @@ function guard_() {
 }
 
 function getExecUrl() { guard_(); return ScriptApp.getService().getUrl(); }
-function savePage(summary) { guard_(); log_('page', summary); return true; }
+function savePage(summary) {
+  guard_();
+  log_('page', summary);
+  var sh = sheet_('結果', ['項目', '内容']);
+  if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
+  var keys = ['1_取込の冪等性', '2b_本人確認画面', '3A_画面内からの/exec呼び出し', '5_Drive', '7_新着表示', '9A_PWA条件'];
+  var rows = keys.map(function (k) { return [k, JSON.stringify(summary[k] === undefined ? null : summary[k]).slice(0, 600)]; });
+  sh.getRange(2, 1, rows.length, 2).setValues(rows);
+  return true;
+}
 
 function ping() { return { ok: true, now: new Date().toISOString(), user: Session.getEffectiveUser().getEmail() ? 'ok' : 'none' }; }
 
@@ -195,29 +204,22 @@ function drv_(path, opts) {
 function t5Drive() {
   guard_();
   var out = { part1_driveFileFolder: {}, part2_existingFolder: {} };
+  function tryDo(obj, key, fn) { try { obj[key] = fn(); } catch (e) { obj[key + '_error'] = String(e && e.message || e).slice(0, 160); } }
   // (1) drive.file で自分が作るフォルダ（マイドライブ直下）
-  var p1 = out.part1_driveFileFolder;
-  var folder = Drive.Files.create({ name: '試験_drive.file', mimeType: 'application/vnd.google-apps.folder' });
-  p1.folderCreated = !!folder.id;
-  var blob = Utilities.newBlob('工程00 試験ファイル(架空)', 'text/plain', '試験_添付.txt');
-  var f = Drive.Files.create({ name: '試験_添付.txt', parents: [folder.id] }, blob);
-  p1.saved = !!f.id;
-  var got = drv_('files/' + f.id + '?alt=media');
-  p1.readBack = got.code === 200 && got.text.indexOf('工程00') >= 0;
-  var perm = drv_('files/' + f.id + '/permissions?fields=permissions(type,role)');
-  try { p1.permissions = JSON.parse(perm.text).permissions.map(function (p) { return p.type + '/' + p.role; }); } catch (e) { p1.permissions = 'error:' + perm.code; }
+  var p1 = out.part1_driveFileFolder, folder = null, f = null;
+  tryDo(p1, 'folderCreated', function () { folder = Drive.Files.create({ name: '試験_drive.file', mimeType: 'application/vnd.google-apps.folder' }); return !!folder.id; });
+  if (folder) {
+    tryDo(p1, 'saved', function () { f = Drive.Files.create({ name: '試験_添付.txt', parents: [folder.id] }, Utilities.newBlob('工程00 試験ファイル(架空)', 'text/plain', '試験_添付.txt')); return !!f.id; });
+    if (f) {
+      tryDo(p1, 'readBack', function () { var g = drv_('files/' + f.id + '?alt=media'); return g.code === 200 && g.text.indexOf('工程00') >= 0; });
+      tryDo(p1, 'permissions', function () { var r = drv_('files/' + f.id + '/permissions?fields=permissions(type,role)'); return JSON.parse(r.text).permissions.map(function (p) { return p.type + '/' + p.role; }); });
+    }
+  }
   // (2) ユーザーが作った既存フォルダ（SA管理フォルダ）
   var p2 = out.part2_existingFolder;
-  var ex = drv_('files/' + SA_FOLDER_ID_ + '?fields=id&supportsAllDrives=true');
-  p2.canSeeFolder = ex.code === 200; p2.seeCode = ex.code;
-  try {
-    var f2 = Drive.Files.create({ name: '試験_既存フォルダ内.txt', parents: [SA_FOLDER_ID_] }, Utilities.newBlob('x', 'text/plain', '試験_既存フォルダ内.txt'));
-    p2.saveInside = !!f2.id;
-  } catch (e) { p2.saveInside = false; p2.saveError = String(e.message).slice(0, 160); }
-  // 営業AIの表のファイルは Drive の権限範囲から見えるか（見えなければ触れない）
-  var sales = drv_('files/' + SALES_DB_ID_ + '?fields=id&supportsAllDrives=true');
-  out.salesDbReachableByDriveFileScope = sales.code === 200;
-  out.salesDbCode = sales.code;
+  tryDo(p2, 'seeCode', function () { return drv_('files/' + SA_FOLDER_ID_ + '?fields=id&supportsAllDrives=true').code; });
+  tryDo(p2, 'saveInside', function () { var f2 = Drive.Files.create({ name: '試験_既存フォルダ内.txt', parents: [SA_FOLDER_ID_] }, Utilities.newBlob('x', 'text/plain', '試験_既存フォルダ内.txt')); return !!f2.id; });
+  tryDo(out, 'salesDbCode', function () { return drv_('files/' + SALES_DB_ID_ + '?fields=id&supportsAllDrives=true').code; });
   log_('t5', out);
   return out;
 }
