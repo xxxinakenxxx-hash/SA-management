@@ -19,6 +19,8 @@ function doGet(e) {
       out = { ok: true, result: sourceCheck_() };
     } else if (action === 'master') {
       out = { ok: true, result: masterCheck_() };
+    } else if (action === 'page') {
+      return HtmlService.createHtmlOutput(pageHtml_()).setTitle('工程00 技術検証');
     } else {
       out = { ok: false, reason: 'unknown_action' };
     }
@@ -55,13 +57,21 @@ function count_(map, key) { map[key] = (map[key] || 0) + 1; }
 function identify_() {
   var active = Session.getActiveUser().getEmail() || '';
   var effective = Session.getEffectiveUser().getEmail() || '';
-  var res = { activeUserEmailAvailable: !!active, effectiveUser: effective, activeUser: active,
-    inMaster: false, allowed: false };
-  if (!active) { res.reason = 'email_missing'; return res; }
-  var v = open_('user_master');
+  var res = lookup_(active);
+  res.activeUserEmailAvailable = !!active;
+  res.effectiveUser = effective;
+  res.activeUser = active;
+  return res;
+}
+
+// 本人判定の本体。メールアドレスを user_master と突き合わせる（試験②でも同じ関数を使う）。
+function lookup_(email, master) {
+  var res = { inMaster: false, allowed: false };
+  if (!email) { res.reason = 'email_missing'; return res; }
+  var v = master || open_('user_master');
   var c = colIndex_(v[0]);
   for (var i = 1; i < v.length; i++) {
-    if (norm_(v[i][c.user_key]) === norm_(active)) {
+    if (norm_(v[i][c.user_key]) === norm_(email)) {
       res.inMaster = true;
       res.role = String(v[i][c.role]).trim();
       res.branch = String(v[i][c.master_branch_name]).trim();
