@@ -29,10 +29,17 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// 読み取り専用（spreadsheets.readonly）のため Sheets API で値だけを取得する。
 function open_(name) {
-  var sh = SpreadsheetApp.openById(SALES_DB_ID_).getSheetByName(name);
-  if (!sh) throw new Error('sheet_not_found:' + name);
-  return sh.getDataRange().getValues();
+  var res = Sheets.Spreadsheets.Values.get(SALES_DB_ID_, "'" + name + "'");
+  var v = res.values || [];
+  if (!v.length) throw new Error('sheet_empty:' + name);
+  var w = v[0].length;
+  return v.map(function (row) {
+    var r = row.slice();
+    while (r.length < w) r.push('');
+    return r;
+  });
 }
 
 function colIndex_(header) {
