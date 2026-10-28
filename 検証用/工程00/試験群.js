@@ -29,6 +29,9 @@ function log_(test, obj) {
   sh.appendRow([new Date().toISOString(), test, JSON.stringify(obj).slice(0, 45000)]);
 }
 
+// 未登録の確認用アドレス。ドメインは実行時に本人のアドレスから取り、コードには書かない。
+function unknownInDomain_() { return 'unknown.person@' + String(Session.getEffectiveUser().getEmail()).split('@')[1]; }
+
 function roleClass_(role) { return role === 'sales_support' ? 'SA' : (role === 'sales' ? '営業' : '対象外'); }
 
 // 試験② 本人判定：user_master の全員のアドレスを判定関数に入れ、役割ごとの件数と結果だけを返す。
@@ -52,7 +55,7 @@ function t2Judge() {
   }
   var out = {
     byRole: byRole, selfMismatch: selfMismatch, caseAndSpaceTolerant: normOk,
-    unknownAddress: lookup_('unknown.person@marubishi-group.co.jp', master).reason,
+    unknownAddress: lookup_(unknownInDomain_(), master).reason,
     emptyAddress: lookup_('', master).reason,
     outsideDomain: lookup_('someone@example.com', master).reason,
     executingUserIsSysadmin: lookup_(Session.getEffectiveUser().getEmail(), master).role === 'sysadmin',
@@ -87,7 +90,7 @@ function t3Gate() {
   Object.keys(sample).forEach(function (t) {
     out.cases[t] = { source: gate_(sample[t], 'source', master), mySaList: gate_(sample[t], 'mySaList', master) };
   });
-  out.cases['未登録'] = { source: gate_('unknown.person@marubishi-group.co.jp', 'source', master) };
+  out.cases['未登録'] = { source: gate_(unknownInDomain_(), 'source', master) };
   out.cases['外部ドメイン'] = { source: gate_('someone@example.com', 'source', master) };
   out.cases['アドレスなし'] = { source: gate_('', 'source', master) };
   log_('t3', out);
