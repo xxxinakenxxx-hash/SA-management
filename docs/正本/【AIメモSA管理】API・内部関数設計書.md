@@ -89,7 +89,7 @@
 | FN-01 | `resolveAuthenticatedUser_` | `Session.getActiveUser().getEmail()`を`user_master.user_key`と照合し、本人・役割（SA＝`sales_support`、営業＝`sales`）・所属（`master_branch_name`）を取得。`active_flag`が「有効」の利用者だけを許可 | 営業AIの`user_master`（Sheets API読み取り専用） |
 | FN-02 | `authorizeRequestAccess_` | 依頼者・SA・所属に基づく閲覧・更新権限 | 利用者マスター、`sa_requests` |
 | FN-03 | `validateRequestInput_` | 入力値・ID・許可遷移・本文等の検証 | 要件と状態規則 |
-| FN-04 | `readSourceSaRecords_` | 対象営業所と`deal_theme`が「SA依頼｜」で始まる`record_id`を識別し必要な原文を権限付きで参照（専用`sa_case`列は使用しない）。ID連携を優先検証 | 既存営業AIメモDB（読取専用） |
+| FN-04 | `readSourceSaRecords_` | 対象営業所と`deal_theme`が「SA依頼｜」で始まる`record_id`を識別し必要な原文を権限付きで参照（専用`sa_case`列は使用しない）。`record_id` を鍵に5分ごとの定期取込（工程00で確認済み） | 既存営業AIメモDB（読取専用） |
 | FN-05 | `importSaRequests_` | 一意キーでSA依頼を冪等取込 | 元レコード、`sa_requests`、履歴 |
 | FN-06 | `findRequestById_` | 依頼行の正確な取得 | `sa_requests` |
 | FN-07 | `updateRequestWithVersion_` | 競合回避・指定列更新 | `sa_requests` |
