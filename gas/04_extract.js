@@ -73,20 +73,59 @@ function validIsoDate_(s) {
   return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
 }
 
-function weekdayJa_(isoDate) {
-  var m = String(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return '';
-  return '日月火水木金土'.charAt(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay());
+function buildCalendarTable_(baseDate) {
+  if (!validIsoDate_(baseDate)) return [];
+  var m = String(baseDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  var start = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  var sinceMonday = (new Date(start).getUTCDay() + 6) % 7;
+  var weekNames = ['今週', '来週', '再来週'];
+  function pad(n) { return ('0' + n).slice(-2); }
+  var rows = [];
+  for (var i = 0; i < 42; i++) {
+    var d = new Date(start + i * 86400000);
+    var iso = d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+    var weekIndex = Math.floor((i + sinceMonday) / 7);
+    var tags = [];
+    if (i === 0) tags.push('今日');
+    if (i === 1) tags.push('明日');
+    if (i === 2) tags.push('明後日');
+    if (new Date(start + (i + 1) * 86400000).getUTCMonth() !== d.getUTCMonth()) tags.push('月末');
+    rows.push({
+      date: iso,
+      line: iso + '(' + '日月火水木金土'.charAt(d.getUTCDay()) + ') ' + (weekIndex < 3 ? weekNames[weekIndex] : weekIndex + '週後') + (tags.length ? ' ' + tags.join('・') : '')
+    });
+  }
+  return rows;
+}
+
+// 依頼文に固有の中身がない一般語（「SA」「依頼」「SA依頼」など）。値として採用しない。
+function isGenericWord_(text) {
+  var t = String(text).normalize('NFKC').replace(/[\s　「」『』()。、．.・:：]/g, '').toUpperCase();
+  if (!t) return true;
+  return /^(SA|SAさん|SA様|SA担当|SA担当者|SA依頼|依頼|ご依頼|お願い|営業支援|営業支援担当|営業支援担当者|担当者|担当|依頼内容|依頼先)$/.test(t);
+}
+
+// 文字列「null」・空文字・一般語は null に直す。
+function normalizeFieldText_(v) {
+  var t = normalizeNullText_(v);
+  return t === null || isGenericWord_(t) ? null : t;
 }
 
 function buildExtractionPayload_(input, model) {
   var base = String(input.baseDate || '');
+  var table = buildCalendarTable_(base);
   var system = 'あなたは、営業から営業支援担当（SA）への依頼文を整理する。依頼文から次の項目を取り出す。' +
-    '書かれていない項目は推測せず null にする（文字列の "null" ではなく JSON の null）。' +
-    'recipient=誰に（依頼の宛先や関係者）、action=何を（依頼内容）、request_type=依頼の種類、fixed_conditions=決まっていること、' +
-    'due_text=いつまで（期限の表現。原文のまま）、due_date=期限を指す日付（yyyy-MM-dd。依頼日' +
-    (base ? '（' + base + '・' + weekdayJa_(base) + '曜日）' : '') +
-    'を基準に解釈できる場合だけ。解釈できなければ null）、due_urgent=「なるべく早く」「至急」等の急ぎ表現なら true（日付は付けない）、そうでなければ false。';
+    '依頼文に書かれていない項目は推測せず、文字列の "null" ではなく JSON の null にする。' +
+    '「SA」「SAさん」「担当者」「依頼」「SA依頼」のような、依頼文に固有の中身がない一般語は、どの項目にも値として入れない（その場合は null）。' +
+    'recipient=誰に：依頼文に書かれた具体的な相手（人名・部署名・取引先名など）だけ。依頼先がSAであることは自明なので入れない。書かれていなければ null。' +
+    'action=何を：依頼内容。' +
+    'request_type=依頼の種類：「見積」「資料作成」「サンプル手配」のように、依頼の種類が依頼文に明示されている場合だけ。内容から種類名を推測して作らない。明示されていなければ null。' +
+    'fixed_conditions=決まっていること：依頼文に明記された条件・仕様・数量などだけ。なければ null。' +
+    'due_text=いつまで：期限の表現を原文のまま。なければ null。' +
+    'due_date=期限の日付（yyyy-MM-dd）：' + (table.length
+      ? '下の早見表にある日付の中から選ぶ。期限の表現が早見表のどの日付を指すか特定できないとき、または表にない日付になるときは null。\n【早見表（依頼日 ' + base + '）】\n' + table.map(function (r) { return r.line; }).join('\n') + '\n'
+      : '依頼日が分からないため、常に null。') +
+    'due_urgent=「なるべく早く」「至急」等の急ぎ表現なら true（日付は付けない）、そうでなければ false。';
   var user = '依頼件名：' + String(input.dealTheme || '') + '\n依頼文：' + String(input.originalText || '') +
     (input.dealContent ? '\n補足：' + String(input.dealContent) : '');
   return {
@@ -113,14 +152,17 @@ function extractFieldsFromText_(input, options) {
     out.error = 'AI_PARSE_ERROR';
     return out;
   }
+  // 期限の日付は、早見表にある日付だけを採用する（表にない・形式が違う日付は null。期限の原文 dueText は保持する）。
+  var inTable = {};
+  buildCalendarTable_(String(input.baseDate || '')).forEach(function (r) { inTable[r.date] = true; });
   var due = normalizeNullText_(parsed.due_date);
-  if (due !== null && !validIsoDate_(due)) due = null;
+  if (due !== null && (!validIsoDate_(due) || !inTable[due])) due = null;
   var fields = {
-    recipient: normalizeNullText_(parsed.recipient),
-    action: normalizeNullText_(parsed.action),
-    requestType: normalizeNullText_(parsed.request_type),
-    fixedConditions: normalizeNullText_(parsed.fixed_conditions),
-    dueText: normalizeNullText_(parsed.due_text),
+    recipient: normalizeFieldText_(parsed.recipient),
+    action: normalizeFieldText_(parsed.action),
+    requestType: normalizeFieldText_(parsed.request_type),
+    fixedConditions: normalizeFieldText_(parsed.fixed_conditions),
+    dueText: normalizeFieldText_(parsed.due_text),
     dueDate: due,
     dueUrgent: parsed.due_urgent === true
   };
