@@ -82,6 +82,25 @@ function validateRequestInput_(operation, params) {
       }
       break;
     }
+    case 'postMessage': {
+      needRequestId(); needOpId();
+      if (SA_MESSAGE_TYPES_.indexOf(p.messageType) < 0) bad('messageType', '投稿の種類が正しくありません。'); else values.messageType = p.messageType;
+      var body = typeof p.body === 'string' ? p.body.trim() : '';
+      if (!body) bad('body', '本文を入力してください。'); else if (body.length > SA_MESSAGE_MAX_) bad('body', '本文は' + SA_MESSAGE_MAX_ + '文字以内で入力してください。'); else values.body = body;
+      var cm = p.correctsMessageId === undefined || p.correctsMessageId === null ? '' : p.correctsMessageId;
+      if (typeof cm !== 'string' || (cm !== '' && !SA_MSG_ID_PATTERN_.test(cm))) bad('correctsMessageId', '訂正する投稿の指定が正しくありません。');
+      else if (values.messageType === 'correction' && !cm) bad('correctsMessageId', '訂正する投稿を指定してください。');
+      else if (values.messageType !== 'correction' && cm) bad('correctsMessageId', '訂正以外の投稿に、訂正先は指定できません。');
+      else values.correctsMessageId = cm;
+      if (p.attachmentId !== undefined && p.attachmentId !== null && p.attachmentId !== '') bad('attachmentId', '添付は、まだ使えません。');
+      break;
+    }
+    case 'markThreadRead': {
+      needRequestId();
+      var lr = p.lastReadMessageId === undefined || p.lastReadMessageId === null ? '' : p.lastReadMessageId;
+      if (typeof lr !== 'string' || (lr !== '' && !SA_MSG_ID_PATTERN_.test(lr))) bad('lastReadMessageId', '既読の位置の指定が正しくありません。'); else values.lastReadMessageId = lr;
+      break;
+    }
     case 'listRequests': {
       var st = p.status === undefined || p.status === null ? [] : p.status;
       if (!Array.isArray(st) || st.some(function (x) { return SA_STATUS_CODES_.indexOf(x) < 0; })) bad('status', '状態の絞り込みが正しくありません。'); else values.status = st;
@@ -92,6 +111,7 @@ function validateRequestInput_(operation, params) {
       var kw = p.keyword === undefined || p.keyword === null ? '' : p.keyword;
       if (typeof kw !== 'string' || kw.length > 100) bad('keyword', '検索語は100文字以内で入力してください。'); else values.keyword = kw.trim();
       values.mineOnly = p.mineOnly === true;
+      values.unreadOnly = p.unreadOnly === true;
       var pageNo = p.page === undefined ? 1 : p.page, size = p.pageSize === undefined ? 100 : p.pageSize;
       if (!isInt_(pageNo) || pageNo < 1) bad('page', 'ページ番号が正しくありません。'); else values.page = pageNo;
       if (!isInt_(size) || size < 1 || size > 200) bad('pageSize', '1ページの件数は1〜200です。'); else values.pageSize = size;

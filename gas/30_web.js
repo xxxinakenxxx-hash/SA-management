@@ -37,5 +37,14 @@ function doGet(e) {
     return HtmlService.createHtmlOutputFromFile('sa').setTitle('AIメモSA管理')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   }
+  if (view === 'sl') {
+    if (ctx.role !== 'sales') {
+      return cm01Output_('forbidden', 'この画面は営業担当者用です。あなたの役割は「' + (SA_ROLE_LABELS_[ctx.masterRole] || ctx.masterRole) + '」のため、使えません。');
+    }
+    var t = HtmlService.createTemplateFromFile('sl');
+    var rid = String((e && e.parameter && e.parameter.requestId) || '');
+    t.initialRequestId = SA_ID_PATTERN_.test(rid) ? rid : '';
+    return t.evaluate().setTitle('SA依頼').addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+  }
   return cm01Output_('forbidden', 'この画面は、まだ使えません。');
 }

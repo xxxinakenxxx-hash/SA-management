@@ -120,8 +120,32 @@
   .placeholder { color:var(--faint); padding:60px 20px; text-align:center; }
   .thread-note { font-size:12px; color:var(--faint); padding:10px 14px; border-top:1px solid var(--line2); }
   .msg-item { padding:10px 14px; border-bottom:1px solid var(--line2); }
-  .msg-item .who { font-size:12px; color:var(--sub); }
+  .msg-item.mine { background:#f6f8ff; }
+  .msg-item.new { border-left:3px solid var(--primary); }
+  .msg-item .who { font-size:12px; color:var(--sub); display:flex; flex-wrap:wrap; gap:2px 8px; align-items:center; }
   .msg-item .bd2 { white-space:pre-wrap; margin-top:2px; }
+  .msg-item .tools { margin-top:4px; font-size:12px; }
+  .msg-item .tools button { border:0; background:transparent; color:var(--primary); padding:0; text-decoration:underline; }
+  .tag { display:inline-block; border-radius:999px; padding:0 8px; font-size:11px; line-height:18px; background:var(--gray-weak); color:#475066; }
+  .tag.q { background:var(--warn-weak); color:#8a4b06; } .tag.c { background:#efe9fb; color:#5a3a9a; } .tag.new { background:var(--primary); color:#fff; }
+  .tag.ok { background:var(--ok-weak); color:var(--ok); } .tag.ng { background:var(--bad-weak); color:var(--bad); }
+  .badge.unread { background:var(--primary); color:#fff; }
+  .compose { border-top:1px solid var(--line); padding:10px 14px; background:#fbfcff; }
+  .compose .kinds { display:flex; gap:14px; margin-bottom:6px; font-size:13px; }
+  .compose textarea { width:100%; min-height:72px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; resize:vertical; }
+  .compose .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
+  .compose .st { font-size:12px; color:var(--sub); flex:1; }
+  .compose .st.err { color:var(--bad); }
+  .compose .quote { font-size:12px; color:var(--sub); background:var(--gray-weak); border-radius:6px; padding:4px 8px; margin-bottom:6px; }
+  .bellwrap { position:relative; }
+  .bn { position:absolute; top:-6px; right:-6px; background:var(--bad); color:#fff; border-radius:999px; font-size:11px; min-width:18px; line-height:18px; text-align:center; padding:0 4px; }
+  .pop { position:absolute; right:0; top:36px; width:340px; max-height:70vh; overflow:auto; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 36px rgba(28,36,51,.2); z-index:30; }
+  .pop .ph { padding:10px 14px; border-bottom:1px solid var(--line2); display:flex; align-items:center; gap:8px; font-weight:700; }
+  .pop .ph .grow { flex:1; }
+  .pop .it { display:block; width:100%; text-align:left; border:0; background:transparent; padding:10px 14px; border-bottom:1px solid var(--line2); }
+  .pop .it:hover { background:#f8faff; }
+  .pop .it .k { font-size:12px; color:var(--sub); display:flex; gap:8px; align-items:center; }
+  .pop .it.seen { opacity:.6; }
   .files { list-style:none; margin:0; padding:0; }
   .files li { padding:8px 14px; border-bottom:1px solid var(--line2); }
 
@@ -158,6 +182,8 @@
       <div class="search"><input id="kw" type="search" placeholder="件名・依頼内容・営業名・担当者で検索" aria-label="検索" maxlength="100"></div>
       <span class="spacer"></span>
       <span class="chip" id="branchChip"></span>
+      <span class="bellwrap"><button class="btn small" id="bellBtn" type="button" aria-label="新着・未読" aria-expanded="false">🔔 新着<span id="bellN" class="bn hidden"></span></button>
+        <div id="pop" class="pop hidden" role="dialog" aria-label="新着・未読"></div></span>
       <button class="btn small" id="reloadBtn" type="button">最新に更新</button>
     </header>
     <div id="banner" class="banner hidden" role="alert"></div>
@@ -181,7 +207,8 @@
       <div class="col thread" id="colThread">
         <div class="hd"><h2>スレッド</h2></div>
         <div class="bd" id="thread"><div class="placeholder">依頼を選ぶと、やり取りが表示されます。</div></div>
-        <div class="thread-note">質問・回答の投稿と、添付の登録・完了登録は、後の工程で追加されます。ここでは表示のみです。</div>
+        <div class="compose hidden" id="compose"></div>
+        <div class="thread-note">添付の登録と完了登録は、後の工程で追加されます。ここでは表示のみです。</div>
       </div>
     </section>
   </div>
@@ -194,8 +221,10 @@
 (function () {
   'use strict';
   var STATUS = { unassigned: '未担当', in_progress: '対応中', waiting_sales: '営業回答待ち', completed: '完了' };
-  var S = { profile: null, items: [], counts: null, total: 0, f: { status: '', assignee: '', dueFilter: '', keyword: '' }, selectedId: null, detail: null, history: null,
-    order: null, dirtyOrder: false, listBusy: false, writeBusy: false, retry: null };
+  var S = { profile: null, items: [], counts: null, total: 0, f: { status: '', assignee: '', dueFilter: '', keyword: '', unread: false }, selectedId: null, detail: null, history: null,
+    order: null, dirtyOrder: false, listBusy: false, writeBusy: false, retry: null,
+    draft: {}, posting: false, composeErr: '', notices: [], known: {}, pollReady: false, pollBusy: false, popOpen: false };
+  var MSG_TYPE = { question: '質問', normal: '投稿', sales_reply: '返信', correction: '訂正' };
 
   /* ---------- 小道具 ---------- */
   function el(tag, attrs, kids) {
@@ -249,6 +278,75 @@
   }
   function firstErr(res) { var d = res && res.error && res.error.details; return d && d.errors && d.errors[0] ? d.errors[0].message : (res && res.error && res.error.message) || '入力内容を確認してください。'; }
 
+  /* ---------- SA-04 新着・未読（画面を開いている間、3秒ごとに問い合わせ） ---------- */
+  function sig(it) { return { status: it.status, rowVersion: it.rowVersion, messageCount: it.messageCount, lastMessageId: it.lastMessageId, unreadCount: it.unreadCount, assignedUserId: it.assignedUserId }; }
+  function nowIsoLocal() { var d = new Date(), p = function (n) { return ('0' + n).slice(-2); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+  function addNotice(type, it, at, quiet) {
+    var key = type + ':' + it.requestId + ':' + (type === 'reply' ? it.lastMessageId : '');
+    if (S.notices.some(function (n) { return n.key === key; })) return;
+    S.notices.unshift({ key: key, type: type, requestId: it.requestId, title: it.title, at: at || nowIsoLocal(), seen: false });
+    if (!quiet) toast((type === 'new_request' ? '新しい依頼：' : '営業から返信：') + it.title);
+  }
+  function markNoticesSeen(id) { var ch = false; S.notices.forEach(function (n) { if (n.requestId === id && !n.seen) { n.seen = true; ch = true; } }); if (ch) renderBell(); }
+  function renderBell() {
+    var n = S.notices.filter(function (x) { return !x.seen; }).length, b = $('bellN');
+    b.textContent = String(n); b.classList.toggle('hidden', n === 0);
+    var pop = $('pop'); pop.classList.toggle('hidden', !S.popOpen); $('bellBtn').setAttribute('aria-expanded', S.popOpen ? 'true' : 'false');
+    if (!S.popOpen) return;
+    clear(pop);
+    pop.appendChild(el('div', { class: 'ph' }, [el('span', { text: '新着・未読' }), el('span', { class: 'grow' }),
+      el('button', { class: 'btn small', type: 'button', text: 'すべて既読', onclick: function () { S.notices.forEach(function (x) { x.seen = true; }); renderBell(); } }),
+      el('button', { class: 'btn small', type: 'button', text: '閉じる', onclick: function () { S.popOpen = false; renderBell(); } })]));
+    if (!S.notices.length) pop.appendChild(el('div', { class: 'empty', text: '新着はありません。' }));
+    S.notices.forEach(function (x) {
+      pop.appendChild(el('button', { class: 'it' + (x.seen ? ' seen' : ''), type: 'button', onclick: function () { S.popOpen = false; x.seen = true; renderBell(); if (S.selectedId !== x.requestId) select(x.requestId); } },
+        [el('div', { class: 'k' }, [el('span', { class: 'tag ' + (x.type === 'reply' ? 'q' : ''), text: x.type === 'reply' ? '営業から返信' : '新規依頼' }), el('span', { text: fmtTime(x.at) })]), el('div', { text: x.title })]));
+    });
+  }
+  function afterListLoaded() {
+    if (!S.pollReady) {
+      S.pollReady = true;
+      S.items.forEach(function (it) { S.known[it.requestId] = sig(it); if (it.unreadCount > 0) addNotice('reply', it, it.lastMessageAt, true); });
+      setInterval(pollNow, 3000);
+    } else S.items.forEach(function (it) { S.known[it.requestId] = sig(it); });
+    renderBell();
+  }
+  function quietListRefresh() {
+    return api('listRequests', listParams()).then(function (res) {
+      if (!res.success) return;
+      if (S.dirtyOrder) {
+        var byId = {}; res.data.items.forEach(function (it) { byId[it.requestId] = it; });
+        var kept = S.items.filter(function (it) { return byId[it.requestId]; }).map(function (it) { return byId[it.requestId]; });
+        res.data.items.forEach(function (it) { if (!kept.some(function (k) { return k.requestId === it.requestId; })) kept.push(it); });
+        S.items = kept;
+      } else S.items = res.data.items;
+      S.counts = res.data.counts; S.total = res.data.total;
+      renderKpis(); renderNav(); renderList(); renderBell();
+    });
+  }
+  function pollNow() {
+    if (S.pollBusy || document.hidden || !S.pollReady) return Promise.resolve();
+    S.pollBusy = true;
+    return api('listRequests', { page: 1, pageSize: 200 }).then(function (res) {
+      S.pollBusy = false;
+      if (!res.success) { var c = res.error && res.error.code; if (c === 'AUTH_REQUIRED' || c === 'FORBIDDEN') handleFail(res); return; }
+      var changed = false, selChanged = false;
+      res.data.items.forEach(function (it) {
+        var prev = S.known[it.requestId];
+        if (!prev) { addNotice('new_request', it, it.receivedAt); changed = true; }
+        else {
+          if (it.unreadCount > prev.unreadCount) addNotice('reply', it, it.lastMessageAt);
+          if (JSON.stringify(sig(it)) !== JSON.stringify(prev)) changed = true;
+          if (it.requestId === S.selectedId && (it.messageCount !== prev.messageCount || it.rowVersion !== prev.rowVersion)) selChanged = true;
+        }
+        S.known[it.requestId] = sig(it);
+      });
+      renderBell();
+      if (changed && !S.listBusy) quietListRefresh();
+      if (selChanged && !S.posting && !S.writeBusy && $('modal').classList.contains('hidden')) quietRefresh(S.selectedId);
+    });
+  }
+
   /* ---------- 起動 ---------- */
   function init() {
     api('getMyProfile').then(function (res) {
@@ -269,19 +367,22 @@
     $('fStatus').addEventListener('change', function () { S.f.status = this.value; refreshList(true); });
     $('fAssignee').addEventListener('change', function () { S.f.assignee = this.value; refreshList(true); });
     $('fDue').addEventListener('change', function () { S.f.dueFilter = this.value; refreshList(true); });
-    $('clearBtn').addEventListener('click', function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '' }); });
+    $('clearBtn').addEventListener('click', function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: false }); });
     $('reloadBtn').addEventListener('click', function () { hideBanner(); reloadAll(); });
+    $('bellBtn').addEventListener('click', function (ev) { ev.stopPropagation(); S.popOpen = !S.popOpen; renderBell(); });
+    document.addEventListener('click', function (ev) { if (S.popOpen && !$('pop').contains(ev.target)) { S.popOpen = false; renderBell(); } });
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && S.popOpen) { S.popOpen = false; renderBell(); } });
     var t = null;
     $('kw').addEventListener('input', function () { var v = this.value; clearTimeout(t); t = setTimeout(function () { S.f.keyword = v; refreshList(true); }, 350); });
   }
   function setFilters(f) {
     S.f = f; $('fStatus').value = f.status; $('fAssignee').value = f.assignee; $('fDue').value = f.dueFilter; $('kw').value = f.keyword; refreshList(true);
   }
-  function filtersActive() { return !!(S.f.status || S.f.assignee || S.f.dueFilter || S.f.keyword); }
+  function filtersActive() { return !!(S.f.status || S.f.assignee || S.f.dueFilter || S.f.keyword || S.f.unread); }
 
   /* ---------- 一覧 ---------- */
   function listParams() {
-    return { status: S.f.status ? [S.f.status] : [], assignee: S.f.assignee, dueFilter: S.f.dueFilter, keyword: S.f.keyword, page: 1, pageSize: 200 };
+    return { status: S.f.status ? [S.f.status] : [], assignee: S.f.assignee, dueFilter: S.f.dueFilter, keyword: S.f.keyword, unreadOnly: !!S.f.unread, page: 1, pageSize: 200 };
   }
   function refreshList(resetOrder) {
     if (resetOrder) { S.order = null; S.dirtyOrder = false; }
@@ -290,7 +391,7 @@
       S.listBusy = false;
       if (!res.success) { if (!handleFail(res, function () { refreshList(); })) showBanner('err', firstErr(res)); renderList(); return; }
       S.items = res.data.items; S.counts = res.data.counts; S.total = res.data.total;
-      renderKpis(); renderNav(); renderList();
+      renderKpis(); renderNav(); renderList(); afterListLoaded();
     });
   }
   function reloadAll() {
@@ -312,10 +413,12 @@
   function renderNav() {
     var c = S.counts || {}, nav = $('nav'); clear(nav);
     [['', '', 'すべて', c.total], ['unassigned', '', '未担当', c.unassigned], ['in_progress', '', '対応中', c.in_progress], ['waiting_sales', '', '営業回答待ち', c.waiting_sales], ['completed', '', '完了', c.completed], ['', 'me', '自分の担当', null]].forEach(function (n) {
-      var on = S.f.status === n[0] && S.f.assignee === n[1] && !S.f.dueFilter && !S.f.keyword;
+      var on = S.f.status === n[0] && S.f.assignee === n[1] && !S.f.dueFilter && !S.f.keyword && !S.f.unread;
       nav.appendChild(el('button', { class: 'nav' + (on ? ' on' : ''), type: 'button', onclick: function () { setFilters({ status: n[0], assignee: n[1], dueFilter: '', keyword: '' }); } },
         [el('span', { text: n[2] }), n[3] === null || n[3] === undefined ? null : el('span', { class: 'n', text: String(n[3]) })]));
     });
+    nav.appendChild(el('button', { class: 'nav' + (S.f.unread ? ' on' : ''), type: 'button', onclick: function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: true }); } },
+      [el('span', { text: '未読あり' }), el('span', { class: 'n', text: String(c.unread || 0) })]));
   }
   function dueText(it) {
     if (it.dueDate) return '期限 ' + it.dueDate;
@@ -336,7 +439,7 @@
       var meta = el('div', { class: 'm' }, [kv('営業', it.salesUserName), it.customerName ? kv('得意先', it.customerName) : null, kv('担当', it.assignedName || '担当なし', !it.assignedName)]);
       var due = el('div', { class: 'due' }, [dueText(it) ? el('span', { class: it.dueUrgent && !it.dueDate ? 'badge urgent' : '', text: dueText(it) }) : el('span', { class: 'unconfirmed', text: '期限 未確認' }),
         it.extractionStatus === 'pending' ? el('span', { class: 'unconfirmed', text: 'AI構造化待ち' }) : null]);
-      var main = el('button', { class: 'main-btn', type: 'button', onclick: function () { select(it.requestId); } }, [el('div', { class: 'top1' }, [el('div', { class: 't', text: it.title }), badge(it.status)]), meta, due]);
+      var main = el('button', { class: 'main-btn', type: 'button', onclick: function () { select(it.requestId); } }, [el('div', { class: 'top1' }, [el('div', { class: 't', text: it.title }), el('span', { style: 'display:flex;gap:4px;align-items:center' }, [it.unreadCount > 0 ? el('span', { class: 'badge unread', text: '未読 ' + it.unreadCount }) : null, badge(it.status)])]), meta, due]);
       var row = el('div', { class: 'card-item' + (it.requestId === S.selectedId ? ' on' : '') }, [main]);
       if (canMove) row.appendChild(el('div', { class: 'mover' }, [
         el('button', { type: 'button', title: '上へ', 'aria-label': '上へ', text: '▲', disabled: i === 0, onclick: function () { move(i, -1); } }),
@@ -382,7 +485,26 @@
     Promise.all([api('getRequestDetail', { requestId: id }), api('getActivityHistory', { requestId: id, page: 1 })]).then(function (rs) {
       if (S.selectedId !== id) return;
       if (!rs[0].success) { if (!handleFail(rs[0], function () { loadDetail(id); })) showBanner('err', firstErr(rs[0])); S.detail = null; renderDetail(); return; }
-      S.detail = rs[0].data; S.history = rs[1].success ? rs[1].data : null; renderDetail(); renderThread();
+      S.detail = rs[0].data; S.history = rs[1].success ? rs[1].data : null; renderDetail(); renderThread(); markViewedRead(id);
+    });
+  }
+  function quietRefresh(id) {
+    return Promise.all([api('getRequestDetail', { requestId: id }), api('getActivityHistory', { requestId: id, page: 1 })]).then(function (rs) {
+      if (S.selectedId !== id || !rs[0].success) return;
+      S.detail = rs[0].data; S.history = rs[1].success ? rs[1].data : null; renderDetail(); renderThread(); markViewedRead(id);
+    });
+  }
+  // 開いている依頼の既読を、本人の分だけ更新する（API-08）。
+  function markViewedRead(id) {
+    markNoticesSeen(id);
+    var d = S.detail; if (!d || d.request.requestId !== id || !(d.request.unreadCount > 0)) return;
+    api('markThreadRead', { requestId: id }).then(function (res) {
+      if (!res.success) return;
+      d.request.unreadCount = 0;
+      S.items.forEach(function (it) { if (it.requestId === id) it.unreadCount = 0; });
+      if (S.known[id]) S.known[id].unreadCount = 0;
+      if (S.counts) S.counts.unread = S.items.filter(function (it) { return it.unreadCount > 0; }).length;
+      renderList(); renderNav(); renderBell();
     });
   }
   function ext(v) { return v ? el('span', { text: v }) : el('span', { class: 'unconfirmed', text: '未確認' }); }
@@ -427,15 +549,74 @@
     pad.appendChild(el('div', { class: 'sec' }, [el('h4', { text: '操作の履歴' }), hist]));
     box.appendChild(pad);
   }
+  function draftFor(id) { return S.draft[id] || (S.draft[id] = { type: 'question', text: '', correctsId: '', opId: '' }); }
   function renderThread() {
     var box = $('thread'); clear(box);
     var d = S.detail;
-    if (!d) { box.appendChild(el('div', { class: 'placeholder', text: '依頼を選ぶと、やり取りが表示されます。' })); return; }
+    if (!d) { box.appendChild(el('div', { class: 'placeholder', text: '依頼を選ぶと、やり取りが表示されます。' })); renderCompose(); return; }
     if (!d.messages.length) box.appendChild(el('div', { class: 'empty', text: 'まだやり取りはありません。' }));
-    d.messages.forEach(function (m) { box.appendChild(el('div', { class: 'msg-item' }, [el('div', { class: 'who', text: m.senderName + '（' + m.senderRole + '）　' + fmtTime(m.createdAt) }), el('div', { class: 'bd2', text: m.body })])); });
+    d.messages.forEach(function (m) {
+      var who = [el('b', { text: m.senderName }), el('span', { text: '（' + m.senderRoleLabel + '）' }), el('span', { text: fmtTime(m.createdAt) }),
+        el('span', { class: 'tag ' + (m.messageType === 'question' ? 'q' : (m.messageType === 'correction' ? 'c' : '')), text: MSG_TYPE[m.messageType] || m.messageType })];
+      if (m.unread) who.push(el('span', { class: 'tag new', text: '新着' }));
+      if (m.notification) who.push(el('span', { class: 'tag ' + (m.notification.status === 'sent' ? 'ok' : 'ng'), text: m.notification.status === 'sent' ? '営業へ通知：送信済み' : (m.notification.status === 'pending' ? '営業へ通知：送信待ち' : '営業へ通知：送信できませんでした') }));
+      var item = el('div', { class: 'msg-item' + (m.mine ? ' mine' : '') + (m.unread ? ' new' : ''), 'data-mid': m.messageId }, [el('div', { class: 'who' }, who), el('div', { class: 'bd2', text: m.body })]);
+      if (m.correctsMessageId) item.insertBefore(el('div', { class: 'tools unconfirmed', text: '（先の投稿への訂正です。元の投稿は残っています）' }), item.lastChild);
+      if (m.mine && d.allowedActions.canCorrect && m.messageType !== 'correction') item.appendChild(el('div', { class: 'tools' }, [el('button', { type: 'button', text: '訂正を追記', onclick: function () { var dr = draftFor(d.request.requestId); dr.type = 'correction'; dr.correctsId = m.messageId; dr.opId = ''; renderCompose(); var ta = $('composeText'); if (ta) ta.focus(); } })]));
+      box.appendChild(item);
+    });
     box.appendChild(el('div', { class: 'hd', style: 'border-top:1px solid var(--line2)' }, [el('h2', { text: '添付ファイル' })]));
     if (!d.attachments.length) box.appendChild(el('div', { class: 'empty', text: '添付はありません。' }));
     else { var ul = el('ul', { class: 'files' }); d.attachments.forEach(function (f) { ul.appendChild(el('li', {}, [el('div', { text: f.fileName }), el('div', { class: 'unconfirmed', text: f.uploadedByName + ' / ' + fmtTime(f.createdAt) })])); }); box.appendChild(ul); }
+    renderCompose();
+  }
+  function renderCompose() {
+    var c = $('compose'); clear(c);
+    var d = S.detail;
+    if (!d || !d.allowedActions || !(d.allowedActions.postTypes && d.allowedActions.postTypes.length)) { c.classList.add('hidden'); return; }
+    c.classList.remove('hidden');
+    var id = d.request.requestId, dr = draftFor(id), types = d.allowedActions.postTypes;
+    if (dr.type !== 'correction' && types.indexOf(dr.type) < 0) dr.type = types[0];
+    if (dr.type === 'correction') {
+      var orig = d.messages.filter(function (m) { return m.messageId === dr.correctsId; })[0];
+      c.appendChild(el('div', { class: 'quote' }, [document.createTextNode('訂正を追記します：「' + (orig ? orig.body.slice(0, 40) + (orig.body.length > 40 ? '…' : '') : '') + '」　'),
+        el('button', { type: 'button', class: 'btn small', text: 'やめる', disabled: S.posting, onclick: function () { dr.type = types[0]; dr.correctsId = ''; dr.opId = ''; renderCompose(); } })]));
+    } else if (types.length > 1) {
+      var kinds = el('div', { class: 'kinds' });
+      types.forEach(function (t) { kinds.appendChild(el('label', {}, [el('input', { type: 'radio', name: 'ptype', value: t, checked: dr.type === t, disabled: S.posting, onchange: function () { dr.type = t; dr.opId = ''; } }), document.createTextNode(' ' + (t === 'question' ? '営業へ質問' : '通常の投稿')) ])); });
+      c.appendChild(kinds);
+    }
+    var ta = el('textarea', { id: 'composeText', maxlength: 2000, rows: 3, placeholder: dr.type === 'sales_reply' ? 'SAへの返信を入力' : '本文を入力', 'aria-label': '本文', disabled: S.posting });
+    ta.value = dr.text;
+    ta.addEventListener('input', function () { dr.text = ta.value; if (S.composeErr) { S.composeErr = ''; var st = $('composeSt'); if (st) { st.textContent = ''; st.className = 'st'; } } });
+    c.appendChild(ta);
+    c.appendChild(el('div', { class: 'row' }, [el('span', { id: 'composeSt', class: 'st' + (S.composeErr ? ' err' : ''), text: S.posting ? '送信中…' : S.composeErr }),
+      el('button', { class: 'btn primary', id: 'sendBtn', type: 'button', text: dr.type === 'sales_reply' ? '返信を送信' : (dr.type === 'correction' ? '訂正を送信' : '送信'), disabled: S.posting, onclick: sendPost })]));
+  }
+  function sendPost() {
+    if (S.posting || !S.detail) return;
+    var d = S.detail, id = d.request.requestId, dr = draftFor(id), text = (dr.text || '').trim();
+    if (!text) { S.composeErr = '本文を入力してください。'; renderCompose(); return; }
+    if (text.length > 2000) { S.composeErr = '本文は2000文字以内で入力してください。'; renderCompose(); return; }
+    if (!dr.opId) dr.opId = opId();
+    var p = { requestId: id, messageType: dr.type, body: text, clientOperationId: dr.opId };
+    if (dr.type === 'correction') p.correctsMessageId = dr.correctsId;
+    S.posting = true; S.composeErr = ''; renderCompose();
+    api('postMessage', p).then(function (res) {
+      S.posting = false;
+      if (!res.success) {
+        var code = res.error && res.error.code;
+        if (code === 'AUTH_REQUIRED' || code === 'FORBIDDEN') { handleFail(res); return; }
+        S.composeErr = code === 'NETWORK' ? '送信に失敗しました。もう一度送信できます（同じ内容が二重に送られることはありません）。' : firstErr(res);
+        if (code !== 'NETWORK') dr.opId = '';
+        renderCompose(); return;
+      }
+      var nt = res.data.notification || { status: 'none' };
+      delete S.draft[id];
+      if (nt.status === 'failed') showBanner('warn', '投稿は保存しました。ただし、営業への通知は送信できませんでした。営業には、画面を開くと届いたやり取りが見えます。');
+      toast(res.data.duplicate ? '同じ投稿は、すでに保存されています' : (nt.status === 'sent' ? '投稿しました（営業へ通知しました）' : '投稿しました'));
+      quietRefresh(id); pollNow();
+    });
   }
 
   /* ---------- 更新操作 ---------- */
