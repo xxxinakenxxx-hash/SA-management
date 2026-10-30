@@ -333,7 +333,7 @@
     var canMove = !filtersActive() && S.total <= S.items.length;
     S.items.forEach(function (it, i) {
       var kv = function (k, v, muted) { return el('span', {}, [el('span', { class: 'k', text: k }), el('span', { class: muted ? 'unconfirmed' : '', text: v })]); };
-      var meta = el('div', { class: 'm' }, [kv('営業', it.salesUserName), kv('得意先', '未確認', true), kv('担当', it.assignedName || '担当なし', !it.assignedName)]);
+      var meta = el('div', { class: 'm' }, [kv('営業', it.salesUserName), it.customerName ? kv('得意先', it.customerName) : null, kv('担当', it.assignedName || '担当なし', !it.assignedName)]);
       var due = el('div', { class: 'due' }, [dueText(it) ? el('span', { class: it.dueUrgent && !it.dueDate ? 'badge urgent' : '', text: dueText(it) }) : el('span', { class: 'unconfirmed', text: '期限 未確認' }),
         it.extractionStatus === 'pending' ? el('span', { class: 'unconfirmed', text: 'AI構造化待ち' }) : null]);
       var main = el('button', { class: 'main-btn', type: 'button', onclick: function () { select(it.requestId); } }, [el('div', { class: 'top1' }, [el('div', { class: 't', text: it.title }), badge(it.status)]), meta, due]);
@@ -393,7 +393,7 @@
     if (!d) { box.appendChild(el('div', { class: 'placeholder', text: S.selectedId ? '依頼を表示できませんでした。' : '左の一覧から依頼を選んでください。' })); return; }
     var r = d.request, a = d.allowedActions, pad = el('div', { class: 'detail-pad' });
     pad.appendChild(el('div', { class: 'dh' }, [el('h3', { text: r.title }), badge(r.status)]));
-    pad.appendChild(el('div', { class: 'meta' }, [el('span', { text: '受付 ' + fmtTime(r.receivedAt) }), el('span', { text: '営業 ' + r.salesUserName }), el('span', { text: '営業所 ' + r.branch })]));
+    pad.appendChild(el('div', { class: 'meta' }, [el('span', { text: '受付 ' + fmtTime(r.receivedAt) }), el('span', { text: '営業 ' + r.salesUserName }), r.customerName ? el('span', { text: '得意先 ' + r.customerName }) : null, el('span', { text: '営業所 ' + r.branch })]));
     var act = el('div', { class: 'actions' }, [el('span', { class: 'who' }, [document.createTextNode('担当：'), r.assignedName ? el('b', { text: r.assignedName }) : el('b', { class: 'unconfirmed', text: '未担当' })])]);
     if (a.canClaim) act.appendChild(el('button', { class: 'btn primary', type: 'button', text: '担当する', onclick: function () { claimDialog(); } }));
     if (a.canReassign) act.appendChild(el('button', { class: 'btn', type: 'button', text: '担当を変更', onclick: function () { reassignDialog(); } }));

@@ -61,6 +61,7 @@ function toListItem_(o, names, cursor) {
   return {
     requestId: String(o.request_id), title: String(o.title), status: String(o.status), statusLabel: SA_STATUS_LABELS_[o.status] || String(o.status),
     branch: String(o.branch_id), salesUserName: displayName_(names, o.sales_user_id),
+    customerName: String(o.customer_ref || ''),
     assignedUserId: String(o.assigned_sa_user_id || ''), assignedName: displayName_(names, o.assigned_sa_user_id),
     receivedAt: String(o.source_recorded_at || o.created_at), createdAt: String(o.created_at),
     dueText: String(o.sa_due_date_text || ''), dueDate: String(o.sa_due_date || ''), dueUrgent: o.sa_due_urgent === true,

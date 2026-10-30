@@ -50,6 +50,7 @@ function buildRequestObject_(rec) {
     sales_user_id: rec.user_key,
     title: rec.deal_theme,
     body: rec.original_text,
+    customer_ref: rec.customer_name,
     status: 'unassigned',
     source_recorded_at: toIsoFromSource_(rec.created_at),
     created_at: now,
