@@ -1,6 +1,6 @@
 // FN-04 readSourceSaRecords_：営業AIの表をSheets API読み取り専用（spreadsheets.readonly）で読み、
 // 営業所名と deal_theme「SA依頼｜」で絞る。営業AIの表には書き込まない。
-var SA_SOURCE_COLUMNS_ = ['record_id', 'created_at', 'branch_name', 'user_key', 'deal_theme', 'original_text', 'deal_content'];
+var SA_SOURCE_COLUMNS_ = ['record_id', 'created_at', 'branch_name', 'user_key', 'customer_name', 'deal_theme', 'original_text', 'deal_content'];
 
 function readSourceSaRecords_(branchName) {
   var branch = String(branchName == null ? '' : branchName).trim();
@@ -29,6 +29,7 @@ function readSourceSaRecords_(branchName) {
       created_at: cell(row, 'created_at'),
       branch_name: cell(row, 'branch_name').trim(),
       user_key: cell(row, 'user_key'),
+      customer_name: cell(row, 'customer_name').trim(),
       deal_theme: cell(row, 'deal_theme'),
       original_text: cell(row, 'original_text'),
       deal_content: cell(row, 'deal_content')

@@ -61,6 +61,7 @@ function toListItem_(o, names, cursor) {
   return {
     requestId: String(o.request_id), title: String(o.title), status: String(o.status), statusLabel: SA_STATUS_LABELS_[o.status] || String(o.status),
     branch: String(o.branch_id), salesUserName: displayName_(names, o.sales_user_id),
+    customerName: String(o.customer_ref || ''),
     assignedUserId: String(o.assigned_sa_user_id || ''), assignedName: displayName_(names, o.assigned_sa_user_id),
     receivedAt: String(o.source_recorded_at || o.created_at), createdAt: String(o.created_at),
     dueText: String(o.sa_due_date_text || ''), dueDate: String(o.sa_due_date || ''), dueUrgent: o.sa_due_urgent === true,
@@ -104,7 +105,7 @@ function handleListRequests_(ctx, params) {
     if (v.dueFilter === 'within3' && !(it.dueDate && it.dueDate >= today && it.dueDate <= in3)) return false;
     if (v.dueFilter === 'urgent' && !it.dueUrgent) return false;
     if (kw) {
-      var hay = [it.title, o.source_original_text, o.sa_action, o.sa_recipient, it.salesUserName, it.assignedName].join('\n').toLowerCase();
+      var hay = [it.title, o.source_original_text, o.sa_action, o.sa_recipient, it.salesUserName, it.assignedName, it.customerName].join('\n').toLowerCase();
       if (hay.indexOf(kw) < 0) return false;
     }
     return true;
