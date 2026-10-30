@@ -48,7 +48,7 @@
 | `sales_user_id` | String | 依頼した営業本人。必須 |
 | `title` | String | 依頼タイトル。既存分類の「SA依頼｜内容」を想定 |
 | `body` | String | 依頼本文 |
-| `customer_ref` | String | 顧客参照。元データに存在する場合のみ、未確定 |
+| `customer_ref` | String | 得意先名。営業AIの deal_records.customer_name を取込時のスナップショットとして保存する（営業AIメモでは得意先名は必須入力） |
 | `assigned_sa_user_id` | String | 現担当者。未担当なら空 |
 | `status` | String | `unassigned/in_progress/waiting_sales/completed`の4値。完了はAPI-11のみ |
 | `completion_comment` | String | 完了返却コメント |
@@ -85,6 +85,7 @@
 | `deal_theme` | `title`, `source_deal_theme` | 「SA依頼｜」で識別し原題を保持 |
 | `original_text` | `source_original_text` | 元の文章を保持してAI構造化に利用 |
 | `deal_content` | `source_deal_content` | 補助資料。原文を置き換えない |
+| `customer_name` | `customer_ref` | 得意先名。カードと詳細に表示 |
 | `user_key` | `sales_user_id`, `source_user_key` | 依頼者の対応 |
 | `branch_name` | `branch_id`, `source_branch_name` | 営業所名の文字列で判定（`branch_id` は営業所名。利用者は `user_master.master_branch_name`、依頼は `deal_records.branch_name`） |
 | `created_at` | `source_recorded_at` | 元記録日時 |
