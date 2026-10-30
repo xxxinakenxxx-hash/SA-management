@@ -105,7 +105,7 @@ function handleListRequests_(ctx, params) {
     if (v.dueFilter === 'within3' && !(it.dueDate && it.dueDate >= today && it.dueDate <= in3)) return false;
     if (v.dueFilter === 'urgent' && !it.dueUrgent) return false;
     if (kw) {
-      var hay = [it.title, o.source_original_text, o.sa_action, o.sa_recipient, it.salesUserName, it.assignedName].join('\n').toLowerCase();
+      var hay = [it.title, o.source_original_text, o.sa_action, o.sa_recipient, it.salesUserName, it.assignedName, it.customerName].join('\n').toLowerCase();
       if (hay.indexOf(kw) < 0) return false;
     }
     return true;
