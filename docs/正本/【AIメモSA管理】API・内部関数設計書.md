@@ -57,7 +57,7 @@
 | API-04 | `claimRequest` | SA | request_id、更新前提条件候補 | 未担当→担当確定、履歴追加 | FR-06/08/14 |
 | API-05 | `reassignRequest` | SA | request_id、変更先SA ID、理由候補 | 担当変更、履歴追加 | FR-07/14 |
 | API-06 | `changeRequestStatus` | SA | request_id、次状態（未担当／対応中／営業回答待ち）、前提条件 | カードの明示操作による進捗更新・履歴追加。完了登録はAPI-11のみ | FR-08/14 |
-| API-07 | `postMessage` | SA/営業 | request_id、body、message_type、client_operation_id、corrects_message_id（任意）、attachment_id（任意） | 追加メッセージのmessage_id。質問は営業宛Google Chatキュー。カード状態は変更しない | FR-09/10/11/15/16 |
+| API-07 | `postMessage` | SA/営業 | request_id、body、message_type、client_operation_id、corrects_message_id（任意）、attachment_id（任意） | 追加メッセージのmessage_id。SAの質問・回答は、その営業の1対1チャットへの通知として登録する（FN-11）。カード状態は変更しない | FR-09/10/11/15/16 |
 | API-08 | `markThreadRead` | SA/営業 | request_id、既読位置 | 当該本人の既読情報更新 | FR-11 |
 | API-09 | `registerAttachment` | SA | request_id、GAS内画面から`google.script.run`で送り、`drive.file`で保存 | Drive保存・添付参照と履歴 | FR-12/14 |
 | API-10 | `getAttachmentAccess` | SA/営業 | attachment_id、request_id | 認可済みファイルの安全な参照導線 | FR-12/18/19 |
@@ -76,7 +76,7 @@
 - **API-15：期限訂正**。SAのみ。元の`source_original_text`は変更せず、解釈日が必要な場合は`yyyy-MM-dd`で受け取り、急ぎ表現なら日付なしも許可。`sa_due_date_text`、`sa_due_date`、`sa_due_urgent`を整合検証し履歴に残す。応答に訂正後の値・`row_version`を返す。
 - **API-06とAPI-11**：通常のカード状態変更はAPI-06、**完了への変更はAPI-11のみ**。API-06の`completed`指定は拒否。営業回答待ちからも完了操作を許可。完了後の明示的な再開はAPI-06で`in_progress`へ変更可能。メッセージ投稿でカード状態を変更しない。
 - **API-09/10**：添付は`request_id`とリンク投稿`message_id`を対応付け、`attachment_id`の同一依頼一致を確認。一般公開Driveリンクは返さず、取得者ごとに権限を再確認する。
-- **SA向け画面通知**：起動中のみ新着・未読をAPI-02/03/08で差分更新。営業へは質問・完了の保存成功を起点にGoogle Chatキューを生成し、配送結果を本体保存と分離する。
+- **SA向け画面通知**：起動中のみ新着・未読をAPI-02/03/08で差分更新。営業へは質問・回答・完了の保存成功を起点に、その営業の1対1チャットへの通知（FN-11）を登録し、配送結果を本体保存と分離する。
 
 ### 3.2 営業所別Drive設定
 
@@ -96,8 +96,8 @@
 | FN-08 | `appendMessage_` | 発言保存、二重送信防止候補 | `sa_messages` |
 | FN-09 | `appendActivityEvent_` | 操作の監査履歴追加 | `sa_activity_log` |
 | FN-10 | `storeAttachmentInDrive_` | Driveへ安全に保存・メタデータ照合 | Drive、`sa_attachments` |
-| FN-11 | `enqueueNotification_` | 送信対象イベント登録（営業へのGoogle Chat Webhook通知。文面に依頼者名・依頼件名を入れる） | `sa_notifications` |
-| FN-12 | `deliverPendingNotifications_` | 営業AIと同じGoogle Chat Webhook（部屋への通知）へ送信・再試行・状態記録。本人宛ての個別送信は行わない。配送結果で依頼状態を変えない | `sa_notifications` |
+| FN-11 | `enqueueNotification_` | 送信対象イベント登録（営業1人ずつの1対1チャットのWebhook通知。文面は送るたびに、依頼名・得意先名・SA名・質問や回答の要旨・SL-02を開くリンクを入れる） | `sa_notifications` |
+| FN-12 | `deliverPendingNotifications_` | 営業1人ずつの1対1チャットに置いたGoogle Chat Webhook（表示名「SA依頼」）へ、その営業にだけ送信し、再試行・状態記録を行う。送り先はスクリプトプロパティ SA_CHAT_WEBHOOK_<営業のuser_key>。未設定の営業への通知は `failed` として記録し、投稿は保存する。全員向けの部屋への通知は行わない。配送結果で依頼状態を変えない | `sa_notifications` |
 | FN-13 | `readThreadCursor_` | 未読位置の参照・更新 | `sa_read_cursors`候補 |
 | FN-14 | `recordImportOutcome_` | 取込結果・失敗・再試行経過 | `sa_import_log`候補 |
 | FN-15 | `extractSaRequestFields_` | OpenAI APIで5項目を抽出してsa_requestsの正式列へ保存。抽出不可はnull、状態pending/complete/needs_review/failed。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。本物の依頼文の送信は1件ずつユーザー許可を得る。 | sa_requests抽出5列・原文・状態 |
@@ -135,7 +135,7 @@
 
 1. 依頼と投稿者のアクセス権を検査。
 2. 投稿本文を検証、二重送信を防止。
-3. メッセージを保存・履歴を記録。営業宛Google Chat通知はSAの質問保存時だけ生成し、営業の返信は起動中SA画面の未読・新着として扱う。
+3. メッセージを保存・履歴を記録。営業宛の1対1チャット通知はSAの質問・回答の保存時に生成し（送り先が未設定なら送信失敗として記録し、投稿は保存する）、営業の返信は起動中SA画面の未読・新着として扱う。
 4. 質問投稿を保存してもカード進捗は自動変更しない。
 5. 必要な受信者へ通知キューを作成。
 6. 営業返信時は起動中のSA画面へ未読・新着表示し、カード状態は変更しない。
@@ -187,7 +187,7 @@ DB側の状態コード候補：`unassigned`→`in_progress`→`waiting_sales`�
 - **CSRF等**：公開方式に応じ、セッション不正利用・不正操作・再送対策を設計。
 - **排他**：Sheetsに対する同時引受・投稿・状態更新の競合を防ぐ。ロック方式と順序を検証。
 - **添付**：形式・容量、Drive共有、ダウンロード導線は承認・実機確認が必要。
-- **通知**：営業への質問・完了通知は営業AIと同じGoogle Chat Webhook（部屋への通知。本人宛ての個別送信は行わない）、SAへの新着は画面を開いている間の3秒ごとの問い合わせ。送信結果は`sa_notifications`に記録する。実送信は工程03で確認する。閉アプリPushは初期対象外。
+- **通知**：営業への質問・回答・完了通知は、営業1人ずつの1対1チャットに置いたGoogle Chat Webhook（表示名「SA依頼」。その営業にだけ送り、全員向けの部屋への通知は行わない。送り先はスクリプトプロパティ SA_CHAT_WEBHOOK_<営業のuser_key>）、SAへの新着は画面を開いている間の3秒ごとの問い合わせ。送信結果は`sa_notifications`に記録する。実送信は工程03で確認する。閉アプリPushは初期対象外。
 - **監査**：過度な個人情報・トークン・エラースタックの外部露出禁止。
 - **運用**：開発・検証・本番を分離。元AIメモへの書込、既存設定・認証情報の閲覧、デプロイは別途承認が必要。
 
@@ -215,7 +215,7 @@ DB側の状態コード候補：`unassigned`→`in_progress`→`waiting_sales`�
 4. 排他・ロック・冪等キーと複数Sheet更新時の復旧方式。
 5. 既読と本人別順序はsa_read_cursorsに保存。既投稿は上書き・削除せず同一スレッドに訂正追記する。
 6. Driveアップロード・ダウンロードの方式、形式・容量・アクセス権。
-7. 確定済み：営業への通知は営業AIと同じWebhook（部屋への通知）で、宛先の個別取得は行わない。SA画面内新着は3秒ごとの問い合わせ。通知失敗・再送の実運用は工程03で確認する。
+7. 確定済み：営業への通知は、営業1人ずつの1対1チャットに置いたWebhook（表示名「SA依頼」）で、その営業にだけ送る（2026-10-30決定。送り先はスクリプトプロパティ SA_CHAT_WEBHOOK_<営業のuser_key>。全員向けの部屋への通知は行わない）。SA画面内新着は3秒ごとの問い合わせ。通知失敗・再送の実運用は工程03で確認する。
 8. カードの明示操作と完了後再開は確定済み。実装する排他・認証・運用は既存営業AIメモと整合させる。
 
 ## 11. 変更管理
