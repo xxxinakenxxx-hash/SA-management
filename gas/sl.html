@@ -98,7 +98,7 @@
   'use strict';
   var STATUS = { unassigned: '未担当', in_progress: '対応中', waiting_sales: '営業回答待ち', completed: '完了' };
   var MSG_TYPE = { question: '質問', normal: '投稿', sales_reply: '返信', correction: '訂正' };
-  var S = { profile: null, items: [], total: 0, counts: null, f: { status: '', mine: false, unread: false }, listBusy: false, detail: null, selectedId: '', draft: {}, posting: false, composeErr: '' };
+  var S = { profile: null, items: [], total: 0, counts: null, f: { status: '', mine: false, unread: false }, listBusy: false, detail: null, selectedId: '', draft: {}, posting: false, composeErr: '', dlBusy: false };
 
   function el(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -194,6 +194,20 @@
     return api('getRequestDetail', { requestId: id }).then(function (res) { if (S.selectedId !== id || !res.success) return; S.detail = res.data; renderDetail(); markRead(id); });
   }
   function markRead(id) { var d = S.detail; if (d && d.request.requestId === id && d.request.unreadCount > 0) api('markThreadRead', { requestId: id }); }
+  function fmtSize(n) { n = Number(n) || 0; return n >= 1048576 ? (Math.round(n / 104857.6) / 10) + ' MB' : (n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' B'); }
+  function downloadFile(requestId, f, btn) {
+    if (S.dlBusy) return;
+    S.dlBusy = true; if (btn) btn.disabled = true;
+    api('getAttachmentAccess', { requestId: requestId, attachmentId: f.attachmentId }).then(function (res) {
+      S.dlBusy = false; if (btn) btn.disabled = false;
+      if (!res.success) { if (!handleFail(res)) showBanner('err', firstErr(res)); return; }
+      var bin = atob(res.data.contentBase64), arr = new Uint8Array(bin.length), i;
+      for (i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([arr], { type: 'application/octet-stream' })), a = document.createElement('a');
+      a.href = url; a.download = res.data.fileName; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    });
+  }
   function ext(v) { return v ? document.createTextNode(v) : el('span', { class: 'unconfirmed', text: '未確認' }); }
   function draftFor(id) { return S.draft[id] || (S.draft[id] = { text: '', correctsId: '', opId: '' }); }
   function renderDetail(loading, failed) {
@@ -229,7 +243,13 @@
     box.appendChild(el('div', { class: 'sec' }, [el('h2', { text: 'SAとのやり取り' }), msgs]));
     if (a.postTypes && a.postTypes.length) box.appendChild(composeNode(r.requestId));
     else box.appendChild(el('div', { class: 'sec' }, [el('div', { class: 'note', text: 'これは、他の営業の依頼です。閲覧だけできます（投稿は、自分の依頼にだけできます）。' })]));
-    box.appendChild(el('div', { class: 'sec' }, [el('h2', { text: '成果物' }), el('div', { class: 'note', text: '成果物の取得は、後の工程で追加されます。' })]));
+    var files = d.attachments || [], fbox = el('div', { class: 'box', id: 'files' });
+    if (!files.length) fbox = el('div', { class: 'note', id: 'files', text: r.status === 'completed' ? '返却された成果物はありません。' : '完了のあと、返却された成果物がここに表示されます。' });
+    else files.forEach(function (f) {
+      fbox.appendChild(el('div', { style: 'display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)' }, [el('div', { style: 'flex:1;min-width:0;word-break:break-all' }, [el('b', { text: f.fileName }), el('div', { class: 'unconfirmed', text: fmtSize(f.fileSize) + ' / ' + fmtTime(f.createdAt) })]),
+        el('button', { class: 'btn small', type: 'button', text: 'ダウンロード', disabled: S.dlBusy, onclick: function (ev) { downloadFile(r.requestId, f, ev.currentTarget); } })]));
+    });
+    box.appendChild(el('div', { class: 'sec' }, [el('h2', { text: '成果物' }), fbox]));
   }
   function composeNode(id) {
     var dr = draftFor(id), c = el('div', { class: 'compose', id: 'compose' });

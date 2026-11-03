@@ -3,11 +3,13 @@
   "oauthScopes": [
     "https://www.googleapis.com/auth/spreadsheets.readonly",
     "https://www.googleapis.com/auth/spreadsheets.currentonly",
+    "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/script.external_request"
   ],
   "dependencies": {
     "enabledAdvancedServices": [
-      { "userSymbol": "Sheets", "version": "v4", "serviceId": "sheets" }
+      { "userSymbol": "Sheets", "version": "v4", "serviceId": "sheets" },
+      { "userSymbol": "Drive", "version": "v3", "serviceId": "drive" }
     ]
   },
   "exceptionLogging": "STACKDRIVER",

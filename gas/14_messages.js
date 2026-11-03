@@ -84,9 +84,11 @@ function updateThreadCursor_(userId, requestId, lastReadMessageId) {
 }
 
 // 依頼ごとの発言の一覧（保存順）。{ requestId: [{ id, sender }] }
-function buildThreadIndex_() {
+// 営業（viewerRole が 'sales'）には、成果物の登録を示す内部の発言（attachment_link）を数えない。成果物は返却後に「成果物」欄にだけ出す。
+function buildThreadIndex_(viewerRole) {
   var out = {};
   readAllMessages_().forEach(function (m) {
+    if (viewerRole === 'sales' && String(m.obj.message_type) === 'attachment_link') return;
     var id = String(m.obj.request_id);
     (out[id] = out[id] || []).push({ id: String(m.obj.message_id), sender: String(m.obj.sender_user_id).toLowerCase(), at: String(m.obj.created_at) });
   });

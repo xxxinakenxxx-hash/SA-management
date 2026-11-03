@@ -101,6 +101,36 @@ function validateRequestInput_(operation, params) {
       if (typeof lr !== 'string' || (lr !== '' && !SA_MSG_ID_PATTERN_.test(lr))) bad('lastReadMessageId', '既読の位置の指定が正しくありません。'); else values.lastReadMessageId = lr;
       break;
     }
+    case 'registerAttachment': {
+      needRequestId(); needOpId();
+      var fn = typeof p.fileName === 'string' ? sanitizeFileName_(p.fileName) : '';
+      if (!fn) bad('fileName', 'ファイル名を指定してください。'); else values.fileName = fn;
+      values.mimeType = sanitizeMimeType_(p.mimeType);
+      if (typeof p.contentBase64 !== 'string' || !p.contentBase64) bad('file', 'ファイルを選んでください。');
+      else if (p.contentBase64.length > SA_ATTACH_BASE64_MAX_) bad('file', 'ファイルが大きすぎます（上限は' + Math.floor(SA_ATTACH_MAX_BYTES_ / 1048576) + 'MBです）。');
+      else if (!/^[A-Za-z0-9+\/]*={0,2}$/.test(p.contentBase64)) bad('file', 'ファイルの内容を読み取れませんでした。');
+      else values.contentBase64 = p.contentBase64;
+      break;
+    }
+    case 'getAttachmentAccess': {
+      needRequestId();
+      var aid = typeof p.attachmentId === 'string' ? p.attachmentId.trim() : '';
+      if (!SA_ATTACH_ID_PATTERN_.test(aid)) bad('attachmentId', '成果物の指定が正しくありません。'); else values.attachmentId = aid;
+      break;
+    }
+    case 'completeRequest': {
+      needRequestId(); needOpId(); needVersion(true);
+      var cc = typeof p.completionComment === 'string' ? p.completionComment.trim() : '';
+      if (!cc) bad('completionComment', '完了コメントを入力してください。'); else if (cc.length > 2000) bad('completionComment', '完了コメントは2000文字以内で入力してください。'); else values.completionComment = cc;
+      var rids = p.returnAttachmentIds === undefined || p.returnAttachmentIds === null ? [] : p.returnAttachmentIds;
+      if (!Array.isArray(rids) || rids.length > 50) bad('returnAttachmentIds', '返却する成果物の指定が正しくありません。');
+      else {
+        var seenA = {}, okA = true;
+        rids.forEach(function (id) { if (typeof id !== 'string' || !SA_ATTACH_ID_PATTERN_.test(id) || seenA[id]) okA = false; seenA[id] = true; });
+        if (!okA) bad('returnAttachmentIds', '返却する成果物の指定が重複または不正です。'); else values.returnAttachmentIds = rids.slice();
+      }
+      break;
+    }
     case 'listRequests': {
       var st = p.status === undefined || p.status === null ? [] : p.status;
       if (!Array.isArray(st) || st.some(function (x) { return SA_STATUS_CODES_.indexOf(x) < 0; })) bad('status', '状態の絞り込みが正しくありません。'); else values.status = st;

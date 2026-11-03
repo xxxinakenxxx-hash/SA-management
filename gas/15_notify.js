@@ -5,7 +5,7 @@
 
 var SA_CHAT_WEBHOOK_PREFIX_ = 'SA_CHAT_WEBHOOK_';
 var SA_CHAT_HOST_PREFIX_ = 'https://chat.googleapis.com/';
-var SA_NOTIFY_KINDS_ = { question: '質問', answer: '回答' };
+var SA_NOTIFY_KINDS_ = { question: '質問', answer: '回答', completed: '完了' };
 
 function chatWebhookUrlFor_(userKey) {
   var props = PropertiesService.getScriptProperties();
@@ -34,13 +34,15 @@ function oneLine_(s, max) {
   return t.length > max ? t.slice(0, max) + '…' : t;
 }
 
-// 通知の文面。送るたびに、依頼名・得意先名・SA名・質問や回答の要旨・SL-02を開くリンクを入れる。
-function buildNotificationText_(req, saName, eventType, body) {
+// 通知の文面。送るたびに、依頼名・得意先名・SA名・質問や回答や完了の要旨・SL-02を開くリンクを入れる。
+// extraLine は、完了通知の「成果物：n件」など、要旨のあとに足す1行（任意）。
+function buildNotificationText_(req, saName, eventType, body, extraLine) {
   var kind = SA_NOTIFY_KINDS_[eventType] || '連絡';
   var lines = ['【SA依頼】' + kind + 'が届きました', '依頼：' + oneLine_(req.title, 60)];
   if (String(req.customer_ref || '').trim()) lines.push('得意先：' + oneLine_(req.customer_ref, 40));
   lines.push('SA：' + (saName || ''));
   lines.push(kind + '：' + oneLine_(body, 100));
+  if (extraLine) lines.push(extraLine);
   var base = appUrl_();
   lines.push('開く：' + (base ? base + (base.indexOf('?') >= 0 ? '&' : '?') + 'view=sl&requestId=' + encodeURIComponent(String(req.request_id)) : '（リンクを取得できませんでした）'));
   return lines.join('\n');
@@ -73,6 +75,29 @@ function enqueueNotification_(msgObj, reqObj, eventType) {
   return obj;
 }
 
+// FN-11（完了）：完了の保存と同じロックの中で、営業宛ての通知を登録する（まだ送らない）。通知IDは 'NT-' + 完了の履歴ID。
+// 発言を持たないため、送るときは履歴と依頼から文面を作る。すでにあればそれを返す。
+function enqueueCompletionNotification_(eventId, reqObj) {
+  var id = 'NT-' + String(eventId);
+  var ex = findNotification_(id);
+  if (ex) return ex.obj;
+  var obj = { notification_id: id, request_id: String(reqObj.request_id), recipient_user_id: String(reqObj.sales_user_id), event_type: 'completed', channel: 'google_chat',
+    delivery_status: 'pending', attempt_count: 0, created_at: nowIso_() };
+  var sh = getTable_('sa_notifications'), row = rowFromObject_('sa_notifications', obj);
+  sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+  return obj;
+}
+
+function findActivityEventById_(eventId) {
+  var sh = getTable_('sa_activity_log'), last = sh.getLastRow();
+  if (last < 2) return null;
+  var h = saHeader_('sa_activity_log'), rows = sh.getRange(2, 1, last - 1, h.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(eventId)) { var o = {}; h.forEach(function (n, j) { o[n] = rows[i][j]; }); return o; }
+  }
+  return null;
+}
+
 function saveNotificationResult_(notificationId, status, code) {
   withScriptLock_(function () {
     var cur = findNotification_(notificationId);
@@ -96,10 +121,18 @@ function deliverNotification_(notificationId) {
     var url = chatWebhookUrlFor_(cur.obj.recipient_user_id);
     if (!url) return finish('failed', 'WEBHOOK_NOT_SET');
     if (url.indexOf(SA_CHAT_HOST_PREFIX_) !== 0) return finish('failed', 'WEBHOOK_INVALID');
-    var msg = findMessageById_(String(notificationId).slice(3)), req = findRequestById_(String(cur.obj.request_id));
-    if (!msg || !req) return finish('failed', 'SOURCE_MISSING');
-    var names = userNameMap_(readUserMasterRows_());
-    var text = buildNotificationText_(req.obj, displayName_(names, msg.obj.sender_user_id), String(cur.obj.event_type), String(msg.obj.body));
+    var srcId = String(notificationId).slice(3), req = findRequestById_(String(cur.obj.request_id)), names = userNameMap_(readUserMasterRows_()), text;
+    if (srcId.indexOf('EV-') === 0) {
+      // 完了の通知：履歴（誰が）と依頼（完了コメント）から文面を作る
+      var ev = findActivityEventById_(srcId);
+      if (!ev || !req) return finish('failed', 'SOURCE_MISSING');
+      var n = readAllAttachments_().filter(function (a) { return String(a.obj.request_id) === String(req.obj.request_id) && a.obj.is_returned_to_sales === true; }).length;
+      text = buildNotificationText_(req.obj, displayName_(names, ev.actor_user_id), String(cur.obj.event_type), String(req.obj.completion_comment), n > 0 ? '成果物：' + n + '件' : '');
+    } else {
+      var msg = findMessageById_(srcId);
+      if (!msg || !req) return finish('failed', 'SOURCE_MISSING');
+      text = buildNotificationText_(req.obj, displayName_(names, msg.obj.sender_user_id), String(cur.obj.event_type), String(msg.obj.body));
+    }
     var res = postChatWebhook_(url, text);
     if (res && res.code >= 200 && res.code < 300) return finish('sent', '');
     return finish('failed', 'HTTP_' + (res ? res.code : 'NONE'));
