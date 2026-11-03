@@ -35,7 +35,10 @@ function findRequestById_(requestId) {
 function withScriptLock_(fn) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw saError_('STORAGE_ERROR', { reason: 'lock_timeout' });
-  try { return fn(); } finally { lock.releaseLock(); }
+  // 鍵を取った直後に確定処理を挟む。挟まないと、直前に別の処理が書いた内容が古いまま見えることがあり、同時更新を防げない（実GASで確認）。
+  try { if (typeof SpreadsheetApp.flush === 'function') SpreadsheetApp.flush(); } catch (e0) { /* 確定できなくても処理は続ける */ }
+  // ロックを手放す前にも、書き込みを確定させる。
+  try { return fn(); } finally { try { if (typeof SpreadsheetApp.flush === 'function') SpreadsheetApp.flush(); } catch (e) { /* 確定できなくても、ロックは必ず手放す */ } lock.releaseLock(); }
 }
 
 // FN-07：指定列だけを更新する。呼び出し側がロックを持っていること。
