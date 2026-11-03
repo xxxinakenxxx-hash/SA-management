@@ -57,16 +57,18 @@ function readCursorsFor_(userId) {
   return out;
 }
 
-function toListItem_(o, names, cursor) {
+function toListItem_(o, names, cursor, thread) {
+  thread = thread || {};
   return {
     requestId: String(o.request_id), title: String(o.title), status: String(o.status), statusLabel: SA_STATUS_LABELS_[o.status] || String(o.status),
-    branch: String(o.branch_id), salesUserName: displayName_(names, o.sales_user_id),
+    branch: String(o.branch_id), salesUserId: String(o.sales_user_id || ''), salesUserName: displayName_(names, o.sales_user_id),
     customerName: String(o.customer_ref || ''),
     assignedUserId: String(o.assigned_sa_user_id || ''), assignedName: displayName_(names, o.assigned_sa_user_id),
     receivedAt: String(o.source_recorded_at || o.created_at), createdAt: String(o.created_at),
     dueText: String(o.sa_due_date_text || ''), dueDate: String(o.sa_due_date || ''), dueUrgent: o.sa_due_urgent === true,
     extractionStatus: String(o.extraction_status), rowVersion: Number(o.row_version),
-    myOrder: cursor && cursor.sortOrder !== null ? cursor.sortOrder : null, sortVersion: cursor ? cursor.sortVersion : null
+    myOrder: cursor && cursor.sortOrder !== null ? cursor.sortOrder : null, sortVersion: cursor ? cursor.sortVersion : null,
+    messageCount: thread.messageCount || 0, lastMessageId: thread.lastMessageId || '', lastMessageAt: thread.lastMessageAt || '', unreadCount: thread.unreadCount || 0
   };
 }
 
@@ -89,12 +91,18 @@ function handleListRequests_(ctx, params) {
   var v = parseInput_('listRequests', params);
   var names = userNameMap_(readUserMasterRows_());
   var cursors = ctx.role === 'sa' ? readCursorsFor_(ctx.userId) : {};
+  var threads = buildThreadIndex_(), lastRead = readLastReadMapFor_(ctx.userId);
+  var ownerOnly = ctx.role === 'sales', reqOwner = {};
+  readAllRequests_().forEach(function (r) { reqOwner[String(r.obj.request_id)] = String(r.obj.sales_user_id).toLowerCase(); });
+  var threadInfo = function (id) { var t = threads[id] || []; var count = ownerOnly && reqOwner[id] !== String(ctx.userId).toLowerCase() ? 0 : unreadCountFor_(t, lastRead[id] || '', ctx.userId); return { messageCount: t.length, lastMessageId: t.length ? t[t.length - 1].id : '', lastMessageAt: t.length ? t[t.length - 1].at : '', unreadCount: count }; };
   var mine = readAllRequests_().filter(function (r) { return String(r.obj.branch_id) === String(ctx.branch); });
   var counts = { unassigned: 0, in_progress: 0, waiting_sales: 0, completed: 0, total: mine.length };
-  mine.forEach(function (r) { if (counts[r.obj.status] !== undefined) counts[r.obj.status]++; });
+  counts.unread = 0;
+  mine.forEach(function (r) { if (counts[r.obj.status] !== undefined) counts[r.obj.status]++; if (threadInfo(String(r.obj.request_id)).unreadCount > 0) counts.unread++; });
   var today = todayJst_(), in3 = addDaysIso_(today, 3), me = String(ctx.userId).toLowerCase(), kw = v.keyword.toLowerCase();
-  var items = mine.map(function (r) { return { o: r.obj, item: toListItem_(r.obj, names, cursors[String(r.obj.request_id)]) }; }).filter(function (x) {
+  var items = mine.map(function (r) { return { o: r.obj, item: toListItem_(r.obj, names, cursors[String(r.obj.request_id)], threadInfo(String(r.obj.request_id))) }; }).filter(function (x) {
     var o = x.o, it = x.item;
+    if (v.unreadOnly && it.unreadCount < 1) return false;
     if (v.status.length && v.status.indexOf(it.status) < 0) return false;
     if (v.assignee === 'me' && it.assignedUserId.toLowerCase() !== me) return false;
     if (v.assignee === 'unassigned' && it.assignedUserId !== '') return false;
@@ -123,14 +131,21 @@ function handleListRequests_(ctx, params) {
 function listRequests(params) { return runApi_(function (ctx) { return handleListRequests_(ctx, params); }); }
 
 // ---- API-03 getRequestDetail ----
-function readMessagesFor_(requestId, names) {
-  var sh = getTable_('sa_messages'), last = sh.getLastRow();
-  if (last < 2) return [];
-  var idx = saColumnIndex_('sa_messages');
-  return sh.getRange(2, 1, last - 1, saHeader_('sa_messages').length).getValues().filter(function (r) { return String(r[idx.request_id]) === requestId; }).map(function (r) {
-    return { messageId: String(r[idx.message_id]), senderName: displayName_(names, r[idx.sender_user_id]), senderRole: String(r[idx.sender_role]), messageType: String(r[idx.message_type]),
-      body: String(r[idx.body]), createdAt: String(r[idx.created_at]), correctsMessageId: String(r[idx.corrects_message_id] || '') };
-  }).sort(function (a, b) { return a.createdAt < b.createdAt ? -1 : 1; });
+function readMessagesFor_(requestId, names, viewer, lastReadId) {
+  var rows = readAllMessages_().filter(function (m) { return String(m.obj.request_id) === requestId; });
+  var me = String(viewer.userId).toLowerCase(), readIdx = -1;
+  if (lastReadId) rows.forEach(function (m, i) { if (String(m.obj.message_id) === lastReadId) readIdx = i; });
+  return rows.map(function (m, i) {
+    var o = m.obj, mine = String(o.sender_user_id).toLowerCase() === me, out = {
+      messageId: String(o.message_id), senderName: displayName_(names, o.sender_user_id), senderRole: String(o.sender_role), senderRoleLabel: SA_ROLE_NAMES_[String(o.sender_role)] || String(o.sender_role),
+      messageType: String(o.message_type), body: String(o.body), createdAt: String(o.created_at), correctsMessageId: String(o.corrects_message_id || ''),
+      mine: mine, unread: !mine && i > readIdx && !(viewer.role === 'sales' && !viewer.isOwner) };
+    if (viewer.role === 'sa' && String(o.sender_role) === 'sa') {
+      var nt = findNotification_('NT-' + String(o.message_id));
+      if (nt) out.notification = { status: String(nt.obj.delivery_status), code: String(nt.obj.last_error_code || '') };
+    }
+    return out;
+  });
 }
 
 function readAttachmentsFor_(requestId, names) {
@@ -150,8 +165,10 @@ function handleGetRequestDetail_(ctx, params) {
   var o = cur.obj;
   var names = userNameMap_(readUserMasterRows_());
   var cursor = ctx.role === 'sa' ? readCursorsFor_(ctx.userId)[v.requestId] : null;
-  var item = toListItem_(o, names, cursor);
+  var thread = buildThreadIndex_()[v.requestId] || [], lastReadId = readLastReadMapFor_(ctx.userId)[v.requestId] || '';
+  var item = toListItem_(o, names, cursor, { messageCount: thread.length, lastMessageId: thread.length ? thread[thread.length - 1].id : '', lastMessageAt: thread.length ? thread[thread.length - 1].at : '', unreadCount: ctx.role === 'sales' && String(o.sales_user_id).toLowerCase() !== String(ctx.userId).toLowerCase() ? 0 : unreadCountFor_(thread, lastReadId, ctx.userId) });
   var isSa = ctx.role === 'sa';
+  var isOwner = ctx.role === 'sales' && String(o.sales_user_id).toLowerCase() === String(ctx.userId).toLowerCase();
   var data = {
     request: item,
     dealTheme: String(o.source_deal_theme), originalText: String(o.source_original_text), dealContent: String(o.source_deal_content || ''),
@@ -159,13 +176,14 @@ function handleGetRequestDetail_(ctx, params) {
     extraction: { status: String(o.extraction_status), recipient: String(o.sa_recipient || ''), action: String(o.sa_action || ''), requestType: String(o.sa_request_type || ''),
       fixedConditions: String(o.sa_fixed_conditions || ''), dueText: String(o.sa_due_date_text || ''), extractedAt: String(o.extracted_at || '') },
     due: { text: item.dueText, date: item.dueDate, urgent: item.dueUrgent, correctedByName: displayName_(names, o.sa_due_date_updated_by), correctedAt: String(o.sa_due_date_updated_at || '') },
-    messages: readMessagesFor_(v.requestId, names),
+    messages: readMessagesFor_(v.requestId, names, { userId: ctx.userId, role: ctx.role, isOwner: isOwner }, lastReadId),
     attachments: readAttachmentsFor_(v.requestId, names),
     allowedActions: {
       canClaim: isSa && String(o.status) === 'unassigned' && !String(o.assigned_sa_user_id || ''),
       canReassign: isSa && !!String(o.assigned_sa_user_id || ''),
       statusTargets: isSa ? allowedStatusTargets_(o).filter(function (t) { return t !== 'in_progress' || String(o.status) !== 'completed' || !!String(o.assigned_sa_user_id || ''); }) : [],
-      canEditNote: isSa, canEditDue: isSa
+      canEditNote: isSa, canEditDue: isSa,
+      postTypes: isSa ? ['question', 'normal'] : (isOwner ? ['sales_reply'] : []), canCorrect: isSa || isOwner
     }
   };
   if (isSa) data.saNote = String(o.sa_note || '');
@@ -334,8 +352,71 @@ function handleSaveMyRequestOrder_(ctx, params) {
 }
 function saveMyRequestOrder(params) { return runApi_(function (ctx) { return handleSaveMyRequestOrder_(ctx, params); }); }
 
+// ---- API-07 postMessage（SA／営業）。投稿でカードの状態・版番号は変えない ----
+function handlePostMessage_(ctx, params) {
+  var v = parseInput_('postMessage', params);
+  var cur = findRequestById_(v.requestId);
+  authorizeRequestAccess_(ctx, cur && cur.obj, 'read');
+  var o = cur.obj, isSa = ctx.role === 'sa';
+  var isOwner = ctx.role === 'sales' && String(o.sales_user_id).toLowerCase() === String(ctx.userId).toLowerCase();
+  if (!isSa && !isOwner) throw saError_('FORBIDDEN');
+  var allowed = isSa ? ['question', 'normal', 'correction'] : ['sales_reply', 'correction'];
+  if (allowed.indexOf(v.messageType) < 0) throw validationError_('messageType', 'この種類の投稿はできません。', 'TYPE_NOT_ALLOWED');
+  var posted = withScriptLock_(function () {
+    var ex = findMessageByOperation_(ctx.userId, v.clientOperationId);
+    if (ex) return { duplicate: true, msg: ex.obj };
+    if (v.messageType === 'correction') {
+      var target = findMessageById_(v.correctsMessageId);
+      if (!target || String(target.obj.request_id) !== v.requestId) throw validationError_('correctsMessageId', '訂正する投稿が見つかりません。', 'CORRECTS_INVALID');
+      if (String(target.obj.sender_user_id).toLowerCase() !== String(ctx.userId).toLowerCase()) throw validationError_('correctsMessageId', '訂正できるのは、自分の投稿だけです。', 'CORRECTS_NOT_OWN');
+    }
+    var msg = { message_id: newId_('MSG'), request_id: v.requestId, sender_user_id: ctx.userId, sender_role: ctx.role, message_type: v.messageType, body: v.body,
+      created_at: nowIso_(), client_operation_id: v.clientOperationId, corrects_message_id: v.messageType === 'correction' ? v.correctsMessageId : '', attachment_id: '' };
+    var rowNum = appendMessage_(msg);
+    try {
+      appendActivityEvent_(ctx.userId, v.requestId, 'message_' + v.messageType, '', '', eventIdFor_(ctx.userId, 'postMessage', v.clientOperationId));
+    } catch (e) {
+      try { removeMessageRow_(rowNum); } catch (e2) { /* 取り消せない場合は、保存失敗として返す */ }
+      throw saError_('STORAGE_ERROR');
+    }
+    var notify = null;
+    if (isSa && (v.messageType === 'question' || v.messageType === 'normal') && String(o.sales_user_id)) {
+      try { notify = enqueueNotification_(msg, o, v.messageType === 'question' ? 'question' : 'answer'); } catch (e3) { notify = { error: true }; }
+    }
+    return { duplicate: false, msg: msg, notify: notify };
+  });
+  var m = posted.msg, notification = { status: 'none', code: '' };
+  if (!posted.duplicate && posted.notify) {
+    notification = posted.notify.error ? { status: 'failed', code: 'ENQUEUE_FAILED' } : deliverNotification_(posted.notify.notification_id);
+  } else if (posted.duplicate && isSa) {
+    var nt = findNotification_('NT-' + String(m.message_id));
+    if (nt) notification = { status: String(nt.obj.delivery_status), code: String(nt.obj.last_error_code || '') };
+  }
+  var names = userNameMap_(readUserMasterRows_());
+  return { duplicate: posted.duplicate, notification: notification,
+    message: { messageId: String(m.message_id), senderName: displayName_(names, m.sender_user_id), senderRole: String(m.sender_role), senderRoleLabel: SA_ROLE_NAMES_[String(m.sender_role)] || String(m.sender_role),
+      messageType: String(m.message_type), body: String(m.body), createdAt: String(m.created_at), correctsMessageId: String(m.corrects_message_id || ''), mine: true, unread: false } };
+}
+function postMessage(params) { return runApi_(function (ctx) { return handlePostMessage_(ctx, params); }); }
+
+// ---- API-08 markThreadRead（本人の既読位置だけを更新）----
+function handleMarkThreadRead_(ctx, params) {
+  var v = parseInput_('markThreadRead', params);
+  var cur = findRequestById_(v.requestId);
+  authorizeRequestAccess_(ctx, cur && cur.obj, 'read');
+  return withScriptLock_(function () {
+    var thread = buildThreadIndex_()[v.requestId] || [], upTo = v.lastReadMessageId;
+    if (upTo && !thread.some(function (t) { return t.id === upTo; })) throw validationError_('lastReadMessageId', '既読にする投稿が見つかりません。', 'MESSAGE_INVALID');
+    if (!upTo) upTo = thread.length ? thread[thread.length - 1].id : '';
+    if (upTo) updateThreadCursor_(ctx.userId, v.requestId, upTo);
+    return { lastReadMessageId: upTo, unreadCount: unreadCountFor_(thread, upTo, ctx.userId) };
+  });
+}
+function markThreadRead(params) { return runApi_(function (ctx) { return handleMarkThreadRead_(ctx, params); }); }
+
 // ---- API-12 getActivityHistory（営業には公開対象の種類だけ）----
-var SA_EVENT_LABELS_ = { claimed: '担当を引き受け', reassigned: '担当を変更', status_changed: '状態を変更', note_updated: '備考を更新', due_corrected: '期限を訂正', order_changed: '並び順を保存' };
+var SA_EVENT_LABELS_ = { claimed: '担当を引き受け', reassigned: '担当を変更', status_changed: '状態を変更', note_updated: '備考を更新', due_corrected: '期限を訂正', order_changed: '並び順を保存',
+  message_question: '質問を投稿', message_normal: '投稿', message_sales_reply: '営業が返信', message_correction: '訂正を追記' };
 var SA_SALES_VISIBLE_EVENTS_ = ['claimed', 'reassigned', 'status_changed'];
 
 function handleGetActivityHistory_(ctx, params) {
