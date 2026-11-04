@@ -1,4 +1,4 @@
-// DB7表の定義と初期化（DB設計書§3〜4.6）。列名・順序は設計書どおり。
+// DB9表の定義と初期化（DB設計書§3〜4.9）。列名・順序は設計書どおり。
 // 型：String／DateTime／Date は文字列として保存（書式「@」）。Integer／Boolean は自動書式。
 var SA_SCHEMA_ = {
   sa_requests: [
@@ -39,10 +39,18 @@ var SA_SCHEMA_ = {
   sa_import_log: [
     ['import_event_id', 'String'], ['source_record_id', 'String'], ['result', 'String'], ['error_code', 'String'],
     ['processed_at', 'DateTime']
+  ],
+  sa_branch_settings: [
+    ['setting_id', 'String'], ['branch_id', 'String'], ['drive_folder_id', 'String'], ['setting_version', 'Integer'],
+    ['set_by_user_id', 'String'], ['set_at', 'DateTime']
+  ],
+  sa_request_folders: [
+    ['request_id', 'String'], ['branch_id', 'String'], ['drive_folder_id', 'String'], ['base_setting_id', 'String'],
+    ['created_by_user_id', 'String'], ['created_at', 'DateTime']
   ]
 };
 
-var SA_TABLE_NAMES_ = ['sa_requests', 'sa_messages', 'sa_attachments', 'sa_activity_log', 'sa_notifications', 'sa_read_cursors', 'sa_import_log'];
+var SA_TABLE_NAMES_ = ['sa_requests', 'sa_messages', 'sa_attachments', 'sa_activity_log', 'sa_notifications', 'sa_read_cursors', 'sa_import_log', 'sa_branch_settings', 'sa_request_folders'];
 
 function saHeader_(name) {
   return SA_SCHEMA_[name].map(function (c) { return c[0]; });
@@ -77,7 +85,7 @@ function ensureTable_(ss, name) {
   return 'created';
 }
 
-// DB7表を作る初期化関数。何度実行しても同じ結果（既にある表は作り直さない）。
+// DB9表を作る初期化関数。何度実行しても同じ結果（既にある表は作り直さない）。
 function initializeSaTables() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var lock = LockService.getScriptLock();

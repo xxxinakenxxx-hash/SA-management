@@ -118,6 +118,19 @@ function validateRequestInput_(operation, params) {
       if (!SA_ATTACH_ID_PATTERN_.test(aid)) bad('attachmentId', '成果物の指定が正しくありません。'); else values.attachmentId = aid;
       break;
     }
+    case 'getBranchStorageSetting': case 'saveBranchStorageSetting': {
+      // 営業所はサーバーが本人の所属から決める。画面から渡された営業所IDは使わない（本人の所属と違えば拒否するために受け取るだけ）。
+      if (p.branchId === undefined || p.branchId === null) values.branchId = '';
+      else if (typeof p.branchId !== 'string' || p.branchId.length > 100) bad('branchId', '営業所の指定が正しくありません。');
+      else values.branchId = p.branchId.trim();
+      if (operation === 'saveBranchStorageSetting') {
+        needOpId();
+        var fu = typeof p.folderUrl === 'string' ? p.folderUrl.trim() : '';
+        if (!fu) bad('folderUrl', '保存先フォルダのURLを入力してください。'); else if (fu.length > 500) bad('folderUrl', 'URLが長すぎます。'); else values.folderUrl = fu;
+        if (!isInt_(p.expectedSettingVersion) || p.expectedSettingVersion < 0) bad('expectedSettingVersion', '設定の版番号が正しくありません。'); else values.expectedSettingVersion = p.expectedSettingVersion;
+      }
+      break;
+    }
     case 'completeRequest': {
       needRequestId(); needOpId(); needVersion(true);
       var cc = typeof p.completionComment === 'string' ? p.completionComment.trim() : '';
