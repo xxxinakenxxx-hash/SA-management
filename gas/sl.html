@@ -19,6 +19,7 @@
   header.top .in { max-width:640px; margin:0 auto; display:flex; align-items:center; gap:10px; }
   header.top h1 { font-size:17px; margin:0; flex:1; }
   .who { font-size:12px; color:var(--sub); }
+  .busymsg { font-size:12px; color:var(--primary); white-space:nowrap; }
   .btn { min-height:44px; border:1px solid var(--line); background:#fff; padding:8px 16px; border-radius:10px; color:var(--ink); }
   .btn.primary { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
   .btn.small { min-height:36px; padding:4px 12px; font-size:13px; }
@@ -79,7 +80,7 @@
 </head>
 <body>
 <div id="boot" data-rid="<?= initialRequestId ?>"></div>
-<header class="top"><div class="in"><h1>SA依頼</h1><div class="who" id="who"></div><button class="btn small" id="reload" type="button">更新</button></div></header>
+<header class="top"><div class="in"><h1>SA依頼</h1><div class="who" id="who"></div><span class="busymsg hidden" id="busyMsg" role="status" aria-live="polite"></span><button class="btn small" id="reload" type="button">更新</button></div></header>
 <main class="wrap">
   <div id="banner" class="banner hidden" role="alert"></div>
   <section id="listView">
@@ -116,9 +117,21 @@
   function badge(st) { return el('span', { class: 'badge st-' + st, text: STATUS[st] || st }); }
   var tt = null;
   function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(function () { t.classList.add('hidden'); }, 2800); }
-  function api(name, arg) {
+  /* ---------- 処理中の表示（実際の通信の状態と連動する。通信が終わる・失敗すると消える） ---------- */
+  var BUSY = { kinds: {} }, BUSY_TEXT = { send: '送信中です…', save: '保存中です…', update: '更新中です…', load: '読み込み中です…' }, BUSY_ORDER = ['send', 'save', 'update', 'load'];
+  var API_KIND = { postMessage: 'send', claimRequest: 'save', reassignRequest: 'save', changeRequestStatus: 'save', updateSaNote: 'save', correctRequestDueDate: 'save', saveMyRequestOrder: 'save',
+    saveBranchStorageSetting: 'save', registerAttachment: 'save', completeRequest: 'save', markThreadRead: 'quiet' };
+  function busyShow() {
+    var t = '', i; for (i = 0; i < BUSY_ORDER.length; i++) if (BUSY.kinds[BUSY_ORDER[i]] > 0) { t = BUSY_TEXT[BUSY_ORDER[i]]; break; }
+    var e = $('busyMsg'); if (e) { e.textContent = t; if (t) e.classList.remove('hidden'); else e.classList.add('hidden'); }
+  }
+  // opts：{ kind: 'update'（画面の更新ボタン）, quiet: true（自動の問い合わせ。表示しない） }
+  function api(name, arg, opts) {
+    var kind = (opts && opts.quiet) ? 'quiet' : ((opts && opts.kind) || API_KIND[name] || 'load'), track = kind !== 'quiet';
+    if (track) { BUSY.kinds[kind] = (BUSY.kinds[kind] || 0) + 1; busyShow(); }
     return new Promise(function (resolve) {
-      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function () { resolve({ success: false, error: { code: 'NETWORK', message: '通信に失敗しました。' } }); });
+      var done = function (res) { if (track) { BUSY.kinds[kind]--; busyShow(); } resolve(res); };
+      var r = google.script.run.withSuccessHandler(done).withFailureHandler(function () { done({ success: false, error: { code: 'NETWORK', message: '通信に失敗しました。' } }); });
       if (arg === undefined) r[name](); else r[name](arg);
     });
   }
@@ -145,9 +158,9 @@
 
   /* ---------- SL-01 一覧 ---------- */
   function listParams() { return { status: S.f.status ? [S.f.status] : [], mineOnly: S.f.mine, unreadOnly: S.f.unread, page: 1, pageSize: 200 }; }
-  function loadList() {
+  function loadList(kind) {
     S.listBusy = true; renderList();
-    return api('listRequests', listParams()).then(function (res) {
+    return api('listRequests', listParams(), typeof kind === 'string' ? { kind: kind } : undefined).then(function (res) {
       S.listBusy = false;
       if (!res.success) { if (!handleFail(res, loadList)) showBanner('err', firstErr(res)); renderList(); return; }
       S.items = res.data.items.slice().reverse(); S.total = res.data.total; S.counts = res.data.counts; hideBanner(); renderChips(); renderList();
@@ -163,8 +176,8 @@
   function dueText(it) { if (it.dueDate) return '期限 ' + it.dueDate; if (it.dueUrgent) return '急ぎ'; return it.dueText ? '期限 ' + it.dueText : ''; }
   function renderList() {
     var box = $('cards'); clear(box);
-    $('count').textContent = S.listBusy && !S.items.length ? '読み込み中…' : S.total + '件';
-    if (S.listBusy && !S.items.length) { box.appendChild(el('div', { class: 'empty', text: '読み込み中…' })); return; }
+    $('count').textContent = S.listBusy && !S.items.length ? '読み込み中です…' : S.total + '件';
+    if (S.listBusy && !S.items.length) { box.appendChild(el('div', { class: 'empty', text: '読み込み中です…' })); return; }
     if (!S.items.length) { box.appendChild(el('div', { class: 'empty' }, [el('b', { text: '該当する依頼はありません' }), document.createTextNode('SA依頼は、営業AIメモから登録すると、ここに表示されます。')])); return; }
     var me = S.profile ? S.profile.userId.toLowerCase() : '';
     S.items.forEach(function (it) {
@@ -182,16 +195,16 @@
 
   /* ---------- SL-02 詳細・返信 ---------- */
   function toList() { S.selectedId = ''; S.detail = null; $('detailView').classList.add('hidden'); $('listView').classList.remove('hidden'); window.scrollTo(0, 0); loadList(); }
-  function openDetail(id) {
+  function openDetail(id, kind) {
     S.selectedId = id; S.detail = null; $('listView').classList.add('hidden'); $('detailView').classList.remove('hidden'); renderDetail(true); window.scrollTo(0, 0);
-    api('getRequestDetail', { requestId: id }).then(function (res) {
+    return api('getRequestDetail', { requestId: id }, typeof kind === 'string' ? { kind: kind } : undefined).then(function (res) {
       if (S.selectedId !== id) return;
       if (!res.success) { if (!handleFail(res, function () { openDetail(id); })) showBanner('err', firstErr(res)); renderDetail(false, true); return; }
       hideBanner(); S.detail = res.data; renderDetail(); markRead(id);
     });
   }
   function reopenQuiet(id) {
-    return api('getRequestDetail', { requestId: id }).then(function (res) { if (S.selectedId !== id || !res.success) return; S.detail = res.data; renderDetail(); markRead(id); });
+    return api('getRequestDetail', { requestId: id }, { quiet: true }).then(function (res) { if (S.selectedId !== id || !res.success) return; S.detail = res.data; renderDetail(); markRead(id); });
   }
   function markRead(id) { var d = S.detail; if (d && d.request.requestId === id && d.request.unreadCount > 0) api('markThreadRead', { requestId: id }); }
   function fmtSize(n) { n = Number(n) || 0; return n >= 1048576 ? (Math.round(n / 104857.6) / 10) + ' MB' : (n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' B'); }
@@ -213,7 +226,7 @@
   function renderDetail(loading, failed) {
     var box = $('detailView'); clear(box);
     box.appendChild(el('div', { class: 'back' }, [el('button', { class: 'btn', type: 'button', id: 'backBtn', text: '← 一覧にもどる', onclick: toList })]));
-    if (loading) { box.appendChild(el('div', { class: 'empty', text: '読み込み中…' })); return; }
+    if (loading) { box.appendChild(el('div', { class: 'empty', text: '読み込み中です…' })); return; }
     var d = S.detail;
     if (!d) { box.appendChild(el('div', { class: 'empty', text: failed ? '依頼を表示できませんでした。' : '' })); return; }
     var r = d.request, a = d.allowedActions;
@@ -261,7 +274,7 @@
     ta.value = dr.text;
     ta.addEventListener('input', function () { dr.text = ta.value; if (S.composeErr) { S.composeErr = ''; var st = $('composeSt'); if (st) { st.textContent = ''; st.className = 'st'; } } });
     c.appendChild(ta);
-    c.appendChild(el('div', { class: 'row' }, [el('span', { id: 'composeSt', class: 'st' + (S.composeErr ? ' err' : ''), text: S.posting ? '送信中…' : S.composeErr }),
+    c.appendChild(el('div', { class: 'row' }, [el('span', { id: 'composeSt', class: 'st' + (S.composeErr ? ' err' : ''), text: S.posting ? '送信中です…' : S.composeErr }),
       el('button', { class: 'btn primary', id: 'sendBtn', type: 'button', text: dr.correctsId ? '訂正を送信' : '返信を送信', disabled: S.posting, onclick: send })]));
     return c;
   }
@@ -289,7 +302,12 @@
 
   /* ---------- 起動 ---------- */
   function init() {
-    $('reload').addEventListener('click', function () { hideBanner(); if (S.selectedId) openDetail(S.selectedId); else loadList(); });
+    $('reload').addEventListener('click', function () {
+      if (S.reloading) return;
+      S.reloading = true; $('reload').disabled = true; hideBanner();
+      var fin = function () { S.reloading = false; $('reload').disabled = false; };
+      Promise.resolve(S.selectedId ? openDetail(S.selectedId, 'update') : loadList('update')).then(fin, fin);
+    });
     $('fStatus').addEventListener('change', function () { S.f.status = this.value; loadList(); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden && !S.selectedId && S.profile) loadList(); });
     api('getMyProfile').then(function (res) {
