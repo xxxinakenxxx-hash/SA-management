@@ -170,5 +170,5 @@ function handleSaveBranchStorageSetting_(ctx, params) {
   return { unchanged: out.unchanged, setting: storageSettingView_(branch, out.row, names) };
 }
 
-function getBranchStorageSetting(params) { return runApi_(function (ctx) { return handleGetBranchStorageSetting_(ctx, params); }); }
-function saveBranchStorageSetting(params) { return runApi_(function (ctx) { return handleSaveBranchStorageSetting_(ctx, params); }); }
+function getBranchStorageSetting(params) { return runApi_(function (ctx) { return handleGetBranchStorageSetting_(ctx, params); }, params); }
+function saveBranchStorageSetting(params) { return runApi_(function (ctx) { return handleSaveBranchStorageSetting_(ctx, params); }, params); }

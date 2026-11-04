@@ -56,4 +56,4 @@ function handleCompleteRequest_(ctx, params) {
   }
   return { duplicate: done.duplicate, request: done.request, returnedCount: done.returnedCount, notification: notification };
 }
-function completeRequest(params) { return runApi_(function (ctx) { return handleCompleteRequest_(ctx, params); }); }
+function completeRequest(params) { return runApi_(function (ctx) { return handleCompleteRequest_(ctx, params); }, params); }

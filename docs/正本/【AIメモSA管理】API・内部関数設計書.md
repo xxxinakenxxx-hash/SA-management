@@ -13,6 +13,7 @@
 ## 2. 共通処理契約
 
 - 全ての要求でサーバー側が利用者を認証し、所属・役割・対象依頼への権限を検査する。クライアント指定の`user_id`や`branch_id`を本人認証の根拠にしない。
+- `sysadmin`（システム管理者）は、SA・営業のどちらの役割でも使える。画面が各APIに指定する`actAs`（`sa`／`sales`。省略時は`sa`）で、そのAPIでの役割が決まる。`actAs`は`sysadmin`の本人にだけ有効で、他の役割では無視する。所属営業所の範囲は変わらない。`user_master`は書き換えない。
 - 読取は所属営業所の営業または許可SAに認め、営業の投稿は本人依頼のみ。添付取得は依頼閲覧と別認可。未認可の場合は対象の存在や顧客情報を漏らさない。
 - 登録・変更処理は入力値を検証し、失敗時に「成功」と返さない。二重投稿防止の`client_operation_id`（二重送信防止）と`row_version`（変更競合防止）を必須の更新契約とする。
 - `request_id`は本システム内の不変ID、`source_record_id`は既存AIメモ元データのID。混同しない。
@@ -51,7 +52,7 @@
 
 | API ID | 名称案 | 呼び出し元 | 入力の要点 | 出力・副作用 | 要件 |
 | --- | --- | --- | --- | --- | --- |
-| API-01 | `getMyProfile` | 両画面 | 認証コンテキスト | 利用者・役割・許可所属、機密項目は除外 | FR-19 |
+| API-01 | `getMyProfile` | 両画面 | 認証コンテキスト、`actAs`（`sysadmin`のみ） | 利用者・役割・許可所属、機密項目は除外。権限がなければ、失敗の理由と役割名を返す（画面がCM-01を出す） | FR-19 |
 | API-02 | `listRequests` | SA/営業 | 状態・担当・期限絞込・本人依頼絞込・ページング | 所属営業所の認可済み依頼一覧。SA本人の並び順と未読も返す | FR-03/04/18 |
 | API-03 | `getRequestDetail` | SA/営業 | request_id | 依頼、期限原文・解釈日・至急区分、SA備考（SAのみ）、閲覧可能なメッセージ・添付メタ情報、状態、row_version | FR-05/18 |
 | API-04 | `claimRequest` | SA | request_id、更新前提条件候補 | 未担当→担当確定、履歴追加 | FR-06/08/14 |
@@ -93,7 +94,7 @@
 
 | FN ID | 関数名案 | 責務 | 読書対象 |
 | --- | --- | --- | --- |
-| FN-01 | `resolveAuthenticatedUser_` | `Session.getActiveUser().getEmail()`を`user_master.user_key`と照合し、本人・役割（SA＝`sales_support`、営業＝`sales`）・所属（`master_branch_name`）を取得。`active_flag`が「有効」の利用者だけを許可 | 営業AIの`user_master`（Sheets API読み取り専用） |
+| FN-01 | `resolveAuthenticatedUser_` | `Session.getActiveUser().getEmail()`を`user_master.user_key`と照合し、本人・役割（SA＝`sales_support`、営業＝`sales`。`sysadmin`は両方で、APIごとの`actAs`に従う）・所属（`master_branch_name`）を取得。`active_flag`が「有効」の利用者だけを許可 | 営業AIの`user_master`（Sheets API読み取り専用） |
 | FN-02 | `authorizeRequestAccess_` | 依頼者・SA・所属に基づく閲覧・更新権限 | 利用者マスター、`sa_requests` |
 | FN-03 | `validateRequestInput_` | 入力値・ID・許可遷移・本文等の検証 | 要件と状態規則 |
 | FN-04 | `readSourceSaRecords_` | 対象営業所と`deal_theme`が「SA依頼｜」で始まる`record_id`を識別し必要な原文を権限付きで参照（専用`sa_case`列は使用しない）。`record_id` を鍵に5分ごとの定期取込（工程00で確認済み） | 既存営業AIメモDB（読取専用） |

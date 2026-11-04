@@ -33,7 +33,7 @@
 | 営業所別設定 | `sa_branch_settings` | `setting_id` | 営業所ごとのDrive保存先フォルダの設定履歴（追記型） |
 | 依頼別フォルダ | `sa_request_folders` | `request_id` | 依頼ごとのDriveフォルダID（1依頼1行） |
 
-社員・営業所マスターは営業AIメモの既存マスターを直接参照する。SA管理DBへ複製・同期しない。参照キーは `user_master.user_key`（本人）と `master_branch_name`（所属。営業所名の文字列）。営業AIの表はSheets API読み取り専用（`spreadsheets.readonly`）で参照する。本人は `Session.getActiveUser().getEmail()` と `user_key` の照合で判定し、`active_flag` が「有効」の利用者だけを許可する（SA＝`sales_support`、営業＝`sales`）。
+社員・営業所マスターは営業AIメモの既存マスターを直接参照する。SA管理DBへ複製・同期しない。参照キーは `user_master.user_key`（本人）と `master_branch_name`（所属。営業所名の文字列）。営業AIの表はSheets API読み取り専用（`spreadsheets.readonly`）で参照する。本人は `Session.getActiveUser().getEmail()` と `user_key` の照合で判定し、`active_flag` が「有効」の利用者だけを許可する（SA＝`sales_support`、営業＝`sales`。`sysadmin`は両画面可）。
 
 ## 4. 列定義案
 
@@ -258,7 +258,7 @@ sa_requests (request_id, branch_id, sales_user_id, assigned_sa_user_id)
 ## 8. 未確定事項・確認事項
 
 1. 確認済み（工程00）：`deal_records`の対象列と「SA依頼｜」保存形式。読取はSheets API読み取り専用。`record_id`は全体・SA行とも重複0件。所属の照合は営業所名の文字列で行う。
-2. 確定済み：`user_master`の列は`user_key`、`user_fullname`、`master_branch_name`、`active_flag`、`role`、`chat_id`、`company_name`。本人は`user_key`、所属は`master_branch_name`、権限は`role`（SA＝`sales_support`、営業＝`sales`）で判定し、`active_flag`が「有効」のみ許可する。`branch_master`は空のため使わない。
+2. 確定済み：`user_master`の列は`user_key`、`user_fullname`、`master_branch_name`、`active_flag`、`role`、`chat_id`、`company_name`。本人は`user_key`、所属は`master_branch_name`、権限は`role`（SA＝`sales_support`、営業＝`sales`。`sysadmin`は両画面可）で判定し、`active_flag`が「有効」のみ許可する。`branch_master`は空のため使わない。
 3. 9シートの名称・主要列は本文で定義済み。実シートの列順・文字数上限・初期データは実装前の照合対象。
 4. 元IDの一意範囲、再取込時の更新許可範囲。
 5. カード側の明示的な状態変更、担当変更時の競合、完了後再開、添付差替えの詳細処理。スレッド投稿からの自動状態変更はしない。

@@ -150,7 +150,7 @@ function handleRegisterAttachment_(ctx, params) {
   if (out.dupMsg) { discardDriveFile_(ctx.userId, v.requestId, stored.driveFileId); return done(out.dupMsg); }
   return { duplicate: false, attachment: attachmentView_(out.att, names) };
 }
-function registerAttachment(params) { return runApi_(function (ctx) { return handleRegisterAttachment_(ctx, params); }); }
+function registerAttachment(params) { return runApi_(function (ctx) { return handleRegisterAttachment_(ctx, params); }, params); }
 
 // ---- 取得の認可：依頼の閲覧権限とは別に、本人と返却対象を検査する ----
 // SA：同じ営業所の依頼の成果物。営業：自分の依頼で、返却対象にされたものだけ。それ以外は、存在を漏らさず NOT_FOUND。
@@ -175,4 +175,4 @@ function handleGetAttachmentAccess_(ctx, params) {
   try { bytes = driveReadBytes_(String(att.obj.drive_file_id)); } catch (e) { throw storageError_('drive_read_failed', 'ファイルを取得できませんでした。時間をおいてやり直してください。'); }
   return { attachmentId: String(att.obj.attachment_id), fileName: String(att.obj.file_name), mimeType: String(att.obj.mime_type), fileSize: bytes.length, contentBase64: Utilities.base64Encode(bytes) };
 }
-function getAttachmentAccess(params) { return runApi_(function (ctx) { return handleGetAttachmentAccess_(ctx, params); }); }
+function getAttachmentAccess(params) { return runApi_(function (ctx) { return handleGetAttachmentAccess_(ctx, params); }, params); }
