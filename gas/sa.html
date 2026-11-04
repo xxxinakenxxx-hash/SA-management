@@ -41,6 +41,7 @@
   .search input { width:100%; padding:8px 12px 8px 34px; border:1px solid var(--line); border-radius:999px; background:#f7f9fc; }
   .search::before { content:"🔍"; position:absolute; left:12px; top:7px; font-size:13px; opacity:.6; }
   .top .spacer { flex:1; }
+  .busymsg { font-size:12px; color:var(--primary); white-space:nowrap; }
   .chip { font-size:12px; color:var(--sub); background:var(--gray-weak); padding:3px 10px; border-radius:999px; white-space:nowrap; }
   .btn { border:1px solid var(--line); background:#fff; padding:6px 14px; border-radius:8px; color:var(--ink); }
   .btn:hover:not(:disabled) { background:#f6f8fc; }
@@ -174,7 +175,7 @@
     <div class="brand">AIメモSA管理<small>SA依頼ワークスペース</small></div>
     <div id="nav"></div>
     <div class="grow"></div>
-    <div class="me" id="me">読み込み中…</div>
+    <div class="me" id="me">読み込み中です…</div>
   </aside>
   <div class="main">
     <header class="top">
@@ -184,6 +185,7 @@
       <span class="chip" id="branchChip"></span>
       <span class="bellwrap"><button class="btn small" id="bellBtn" type="button" aria-label="新着・未読" aria-expanded="false">🔔 新着<span id="bellN" class="bn hidden"></span></button>
         <div id="pop" class="pop hidden" role="dialog" aria-label="新着・未読"></div></span>
+      <span class="busymsg hidden" id="busyMsg" role="status" aria-live="polite"></span>
       <button class="btn small" id="storageBtn" type="button">保存先設定</button>
       <button class="btn small" id="reloadBtn" type="button">最新に更新</button>
     </header>
@@ -209,7 +211,6 @@
         <div class="hd"><h2>スレッド</h2></div>
         <div class="bd" id="thread"><div class="placeholder">依頼を選ぶと、やり取りが表示されます。</div></div>
         <div class="compose hidden" id="compose"></div>
-        <div class="thread-note">添付の登録と完了登録は、後の工程で追加されます。ここでは表示のみです。</div>
       </div>
     </section>
   </div>
@@ -246,9 +247,21 @@
   var toastTimer = null;
   function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.add('hidden'); }, 2600); }
 
-  function api(name, arg) {
+  /* ---------- 処理中の表示（実際の通信の状態と連動する。通信が終わる・失敗すると消える） ---------- */
+  var BUSY = { kinds: {} }, BUSY_TEXT = { send: '送信中です…', save: '保存中です…', update: '更新中です…', load: '読み込み中です…' }, BUSY_ORDER = ['send', 'save', 'update', 'load'];
+  var API_KIND = { postMessage: 'send', claimRequest: 'save', reassignRequest: 'save', changeRequestStatus: 'save', updateSaNote: 'save', correctRequestDueDate: 'save', saveMyRequestOrder: 'save',
+    saveBranchStorageSetting: 'save', registerAttachment: 'save', completeRequest: 'save', markThreadRead: 'quiet' };
+  function busyShow() {
+    var t = '', i; for (i = 0; i < BUSY_ORDER.length; i++) if (BUSY.kinds[BUSY_ORDER[i]] > 0) { t = BUSY_TEXT[BUSY_ORDER[i]]; break; }
+    var e = $('busyMsg'); if (e) { e.textContent = t; if (t) e.classList.remove('hidden'); else e.classList.add('hidden'); }
+  }
+  // opts：{ kind: 'update'（画面の更新ボタン）, quiet: true（自動の問い合わせ。表示しない） }
+  function api(name, arg, opts) {
+    var kind = (opts && opts.quiet) ? 'quiet' : ((opts && opts.kind) || API_KIND[name] || 'load'), track = kind !== 'quiet';
+    if (track) { BUSY.kinds[kind] = (BUSY.kinds[kind] || 0) + 1; busyShow(); }
     return new Promise(function (resolve) {
-      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function () { resolve({ success: false, error: { code: 'NETWORK', message: '通信に失敗しました。' } }); });
+      var done = function (res) { if (track) { BUSY.kinds[kind]--; busyShow(); } resolve(res); };
+      var r = google.script.run.withSuccessHandler(done).withFailureHandler(function () { done({ success: false, error: { code: 'NETWORK', message: '通信に失敗しました。' } }); });
       if (arg === undefined) r[name](); else r[name](arg);
     });
   }
@@ -314,7 +327,7 @@
     renderBell();
   }
   function quietListRefresh() {
-    return api('listRequests', listParams()).then(function (res) {
+    return api('listRequests', listParams(), { quiet: true }).then(function (res) {
       if (!res.success) return;
       if (S.dirtyOrder) {
         var byId = {}; res.data.items.forEach(function (it) { byId[it.requestId] = it; });
@@ -329,7 +342,7 @@
   function pollNow() {
     if (S.pollBusy || document.hidden || !S.pollReady) return Promise.resolve();
     S.pollBusy = true;
-    return api('listRequests', { page: 1, pageSize: 200 }).then(function (res) {
+    return api('listRequests', { page: 1, pageSize: 200 }, { quiet: true }).then(function (res) {
       S.pollBusy = false;
       if (!res.success) { var c = res.error && res.error.code; if (c === 'AUTH_REQUIRED' || c === 'FORBIDDEN') handleFail(res); return; }
       var changed = false, selChanged = false;
@@ -370,7 +383,12 @@
     $('fAssignee').addEventListener('change', function () { S.f.assignee = this.value; refreshList(true); });
     $('fDue').addEventListener('change', function () { S.f.dueFilter = this.value; refreshList(true); });
     $('clearBtn').addEventListener('click', function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: false }); });
-    $('reloadBtn').addEventListener('click', function () { hideBanner(); reloadAll(); });
+    $('reloadBtn').addEventListener('click', function () {
+      if (S.reloading) return;
+      S.reloading = true; $('reloadBtn').disabled = true; hideBanner();
+      var fin = function () { S.reloading = false; $('reloadBtn').disabled = false; };
+      Promise.resolve(reloadAll('update')).then(fin, fin);
+    });
     $('storageBtn').addEventListener('click', function () { storageDialog(); });
     $('bellBtn').addEventListener('click', function (ev) { ev.stopPropagation(); S.popOpen = !S.popOpen; renderBell(); });
     document.addEventListener('click', function (ev) { if (S.popOpen && !$('pop').contains(ev.target)) { S.popOpen = false; renderBell(); } });
@@ -387,21 +405,21 @@
   function listParams() {
     return { status: S.f.status ? [S.f.status] : [], assignee: S.f.assignee, dueFilter: S.f.dueFilter, keyword: S.f.keyword, unreadOnly: !!S.f.unread, page: 1, pageSize: 200 };
   }
-  function refreshList(resetOrder) {
+  function refreshList(resetOrder, kind) {
     if (resetOrder) { S.order = null; S.dirtyOrder = false; }
     S.listBusy = true; renderList();
-    return api('listRequests', listParams()).then(function (res) {
+    return api('listRequests', listParams(), kind ? { kind: kind } : undefined).then(function (res) {
       S.listBusy = false;
       if (!res.success) { if (!handleFail(res, function () { refreshList(); })) showBanner('err', firstErr(res)); renderList(); return; }
       S.items = res.data.items; S.counts = res.data.counts; S.total = res.data.total;
       renderKpis(); renderNav(); renderList(); afterListLoaded();
     });
   }
-  function reloadAll() {
-    refreshList(true).then(function () {
+  function reloadAll(kind) {
+    return refreshList(true, kind).then(function () {
       if (S.selectedId) {
         if (!S.items.some(function (i) { return i.requestId === S.selectedId; }) && !filtersActive()) { S.selectedId = null; S.detail = null; renderDetail(); renderThread(); return; }
-        loadDetail(S.selectedId);
+        return loadDetail(S.selectedId, kind);
       } else { renderDetail(); renderThread(); }
     });
   }
@@ -430,8 +448,8 @@
   }
   function renderList() {
     var box = $('list'); clear(box);
-    $('count').textContent = S.listBusy && !S.items.length ? '読み込み中…' : S.total + '件' + (S.total > S.items.length ? '（先頭' + S.items.length + '件を表示）' : '');
-    if (S.listBusy && !S.items.length) { box.appendChild(el('div', { class: 'empty', text: '読み込み中…' })); renderOrderBar(); return; }
+    $('count').textContent = S.listBusy && !S.items.length ? '読み込み中です…' : S.total + '件' + (S.total > S.items.length ? '（先頭' + S.items.length + '件を表示）' : '');
+    if (S.listBusy && !S.items.length) { box.appendChild(el('div', { class: 'empty', text: '読み込み中です…' })); renderOrderBar(); return; }
     if (!S.items.length) {
       box.appendChild(el('div', { class: 'empty' }, [el('b', { text: '該当する依頼はありません' }), filtersActive() ? el('button', { class: 'btn small', type: 'button', text: '条件をクリア', onclick: function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '' }); } }) : document.createTextNode('新しい依頼が取り込まれると、ここに表示されます。')]));
       renderOrderBar(); return;
@@ -483,16 +501,17 @@
     if (S.dirtyOrder && !window.confirm('保存していない並び順の変更があります。破棄して移動しますか？')) return;
     S.selectedId = id; renderList(); loadDetail(id);
   }
-  function loadDetail(id) {
+  function loadDetail(id, kind) {
     S.detail = null; S.history = null; renderDetail(true); renderThread();
-    Promise.all([api('getRequestDetail', { requestId: id }), api('getActivityHistory', { requestId: id, page: 1 })]).then(function (rs) {
+    var o = kind ? { kind: kind } : undefined;
+    return Promise.all([api('getRequestDetail', { requestId: id }, o), api('getActivityHistory', { requestId: id, page: 1 }, o)]).then(function (rs) {
       if (S.selectedId !== id) return;
       if (!rs[0].success) { if (!handleFail(rs[0], function () { loadDetail(id); })) showBanner('err', firstErr(rs[0])); S.detail = null; renderDetail(); return; }
       S.detail = rs[0].data; S.history = rs[1].success ? rs[1].data : null; renderDetail(); renderThread(); markViewedRead(id);
     });
   }
   function quietRefresh(id) {
-    return Promise.all([api('getRequestDetail', { requestId: id }), api('getActivityHistory', { requestId: id, page: 1 })]).then(function (rs) {
+    return Promise.all([api('getRequestDetail', { requestId: id }, { quiet: true }), api('getActivityHistory', { requestId: id, page: 1 }, { quiet: true })]).then(function (rs) {
       if (S.selectedId !== id || !rs[0].success) return;
       S.detail = rs[0].data; S.history = rs[1].success ? rs[1].data : null; renderDetail(); renderThread(); markViewedRead(id);
     });
@@ -513,7 +532,7 @@
   function ext(v) { return v ? el('span', { text: v }) : el('span', { class: 'unconfirmed', text: '未確認' }); }
   function renderDetail(loading) {
     var box = $('detail'); clear(box);
-    if (loading) { box.appendChild(el('div', { class: 'placeholder', text: '読み込み中…' })); return; }
+    if (loading) { box.appendChild(el('div', { class: 'placeholder', text: '読み込み中です…' })); return; }
     var d = S.detail;
     if (!d) { box.appendChild(el('div', { class: 'placeholder', text: S.selectedId ? '依頼を表示できませんでした。' : '左の一覧から依頼を選んでください。' })); return; }
     var r = d.request, a = d.allowedActions, pad = el('div', { class: 'detail-pad' });
@@ -577,7 +596,7 @@
       fileInput = el('input', { type: 'file', id: 'fileInput', class: 'hidden', 'aria-label': 'ファイルを選ぶ' });
       fileInput.addEventListener('change', function () { var f = fileInput.files && fileInput.files[0]; fileInput.value = ''; if (f) uploadFile(f); });
       hd.appendChild(fileInput);
-      hd.appendChild(el('button', { class: 'btn small', type: 'button', id: 'addFileBtn', text: S.upBusy ? '保存中…' : 'ファイルを追加', disabled: S.upBusy, onclick: function () { fileInput.click(); } }));
+      hd.appendChild(el('button', { class: 'btn small', type: 'button', id: 'addFileBtn', text: S.upBusy ? '保存中です…' : 'ファイルを追加', disabled: S.upBusy, onclick: function () { fileInput.click(); } }));
     }
     box.appendChild(hd);
     if (S.upMsg) box.appendChild(el('div', { class: 'thread-note', id: 'upMsg', style: 'color:var(--bad)' }, [document.createTextNode(S.upMsg), S.upRetry ? el('button', { class: 'btn small', type: 'button', text: 'もう一度送る', style: 'margin-left:8px', onclick: function () { S.upRetry(); } }) : null]));
@@ -613,7 +632,7 @@
     ta.value = dr.text;
     ta.addEventListener('input', function () { dr.text = ta.value; if (S.composeErr) { S.composeErr = ''; var st = $('composeSt'); if (st) { st.textContent = ''; st.className = 'st'; } } });
     c.appendChild(ta);
-    c.appendChild(el('div', { class: 'row' }, [el('span', { id: 'composeSt', class: 'st' + (S.composeErr ? ' err' : ''), text: S.posting ? '送信中…' : S.composeErr }),
+    c.appendChild(el('div', { class: 'row' }, [el('span', { id: 'composeSt', class: 'st' + (S.composeErr ? ' err' : ''), text: S.posting ? '送信中です…' : S.composeErr }),
       el('button', { class: 'btn primary', id: 'sendBtn', type: 'button', text: dr.type === 'sales_reply' ? '返信を送信' : (dr.type === 'correction' ? '訂正を送信' : '送信'), disabled: S.posting, onclick: sendPost })]));
   }
   function sendPost() {
@@ -802,7 +821,7 @@
   /* ---------- SA-05 営業所の保存先設定（SA-01内のダイアログ） ---------- */
   function storageDialog() {
     var cop = opId(), cur = { settingVersion: 0 }, busy = false;
-    var info = el('div', { class: 'unconfirmed', id: 'stInfo', text: '現在の設定を読み込み中…' });
+    var info = el('div', { class: 'unconfirmed', id: 'stInfo', text: '現在の設定を読み込み中です…' });
     var input = el('input', { id: 'stUrl', type: 'text', maxlength: '500', placeholder: 'https://drive.google.com/drive/folders/…', autocomplete: 'off' });
     var err = el('div', { class: 'err hidden', id: 'stErr' });
     var go = el('button', { class: 'btn primary', type: 'button', id: 'stGo', text: '保存', disabled: true, onclick: save });
@@ -824,7 +843,7 @@
       var url = input.value.trim();
       if (!url) { show('保存先フォルダのURLを入力してください。'); return; }
       if (busy) return;
-      busy = true; go.disabled = true; go.textContent = '確認して保存中…'; err.classList.add('hidden');
+      busy = true; go.disabled = true; go.textContent = '確認して保存中です…'; err.classList.add('hidden');
       api('saveBranchStorageSetting', { folderUrl: url, expectedSettingVersion: cur.settingVersion, clientOperationId: cop }).then(function (res) {
         busy = false; go.textContent = '保存'; go.disabled = false;
         if (res.success) { closeModal(); hideBanner(); toast(res.data.unchanged ? 'すでに、この保存先に設定されています' : '保存先を設定しました'); return; }
