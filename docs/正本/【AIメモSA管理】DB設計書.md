@@ -30,6 +30,8 @@
 | 通知 | `sa_notifications` | `notification_id` | 配信キューと再試行状態 |
 | 既読位置 | `sa_read_cursors` | `cursor_id` | 利用者別・依頼別の閲覧位置（方式候補） |
 | 取込実行履歴 | `sa_import_log` | `import_event_id` | 取込成否・失敗再試行（方式候補） |
+| 営業所別設定 | `sa_branch_settings` | `setting_id` | 営業所ごとのDrive保存先フォルダの設定履歴（追記型） |
+| 依頼別フォルダ | `sa_request_folders` | `request_id` | 依頼ごとのDriveフォルダID（1依頼1行） |
 
 社員・営業所マスターは営業AIメモの既存マスターを直接参照する。SA管理DBへ複製・同期しない。参照キーは `user_master.user_key`（本人）と `master_branch_name`（所属。営業所名の文字列）。営業AIの表はSheets API読み取り専用（`spreadsheets.readonly`）で参照する。本人は `Session.getActiveUser().getEmail()` と `user_key` の照合で判定し、`active_flag` が「有効」の利用者だけを許可する（SA＝`sales_support`、営業＝`sales`）。
 
@@ -167,16 +169,42 @@
 
 ### 4.6 `sa_read_cursors`／`sa_import_log`（候補）
 
-- `sa_read_cursors`：`cursor_id`、`request_id`、`user_id`、`last_read_message_id`（null可）、`read_at`（null可）、`sort_order`（整数・null可）、`sort_version`（初期1）。同一`user_id × request_id`を一意にし、未読とSA本人別の並び順を同じ7シート内に保存する。他SAの順序を書き換えない。
+- `sa_read_cursors`：`cursor_id`、`request_id`、`user_id`、`last_read_message_id`（null可）、`read_at`（null可）、`sort_order`（整数・null可）、`sort_version`（初期1）。同一`user_id × request_id`を一意にし、未読とSA本人別の並び順を同じ表に保存する。他SAの順序を書き換えない。
 - `sa_import_log`：`import_event_id`、`source_record_id`、`result`、`error_code`、`processed_at`。元依頼との二重取込防止と再試行監査用の候補。
 - これらの採否、列の型・形式・対象行数はAPI設計と検証結果に合わせて確定する。
 
 ### 4.7 既定機能の保存先と更新規則
 
 - **SA備考・期限**：`sa_requests.sa_note`、`sa_due_date_text`、`sa_due_date`、`sa_due_urgent`に保存。期限手動訂正は原文スナップショットを維持し、訂正者・日時・監査履歴を記録する。
-- **本人別並び順**：7シート内の`sa_read_cursors`に`user_id × request_id`を一意キーとして`sort_order`を格納。新規依頼は末尾へ、並び順未設定なら受付日時とrequest_id順。操作した本人の行だけロック下で並べ直し、他のSAの設定は不変。担当・状態は`sa_requests`にある共有値を使う。
-- **営業所別Drive保存先**：7シートの外に新しい管理シートを増やさず、**SA管理GASのScript Properties**へ`SA_DRIVE_FOLDER_<branch_id>`のキーで既存DriveフォルダIDを設定する。これは利用者マスターの複製ではなく、営業所別のアプリ設定値。既存の運用権限で設定・更新し、独立管理画面とSA管理者ロールは追加しない。未設定・到達不能・権限不足ならファイル登録を拒否し、既存の設定値を勝手に補完しない。設定変更は日時・変更者・対象営業所を運用記録に残す。設定・変更は管理者（ユーザー本人）がGASのスクリプトプロパティで行い、`tasks/CHAT_CURRENT.md` に記録する。
+- **本人別並び順**：`sa_read_cursors`に`user_id × request_id`を一意キーとして`sort_order`を格納。新規依頼は末尾へ、並び順未設定なら受付日時とrequest_id順。操作した本人の行だけロック下で並べ直し、他のSAの設定は不変。担当・状態は`sa_requests`にある共有値を使う。
+- **営業所別Drive保存先**：営業所ごとの保存先フォルダIDは`sa_branch_settings`（§4.8）に追記して保持し、依頼ごとのDriveフォルダIDは`sa_request_folders`（§4.9）に保持する。SA-01内のダイアログ（SA-05）から、その営業所のSAが設定・変更する。これは利用者マスターの複製ではなく、営業所別のアプリ設定値。Script Propertiesは使わず、独立管理画面とSA管理者ロールは追加しない。未設定・到達不能・権限不足ならファイル登録を拒否し、既存の設定値を勝手に補完しない。設定の操作者・日時・営業所は`sa_branch_settings`に残る。
 - **排他と復旧**：依頼更新は`LockService.getScriptLock`下で`row_version`を検証する。複数セルの書き込みの途中で失敗した場合は、巻き戻し（補償）で整合に戻す。メッセージと通知は操作IDで再実行を冪等化。Drive保存成功後にSheets登録が失敗した場合は対応するIDを失敗ログに記録し、孤立ファイルを追跡して復旧する。通知送信の成否で依頼状態は変更しない。
+
+### 4.8 `sa_branch_settings`
+
+| 列名 | 型 | 意味・制約 |
+| --- | --- | --- |
+| `setting_id` | String | 主キー、不変 |
+| `branch_id` | String | 設定対象の営業所。必須。ログイン者の所属から決め、リクエスト値では決めない |
+| `drive_folder_id` | String | 保存先DriveフォルダID。必須。フォルダURL全体ではなくIDだけを保持する |
+| `setting_version` | Integer | 営業所ごとに1から連番。最新の版が現在の設定 |
+| `set_by_user_id` | String | 設定・変更したSA |
+| `set_at` | DateTime | 設定・変更日時 |
+
+追記型。過去の設定は残し、更新・削除しない。同じ`drive_folder_id`を複数の営業所の現在の設定にしない。依頼別フォルダとして使われているフォルダを保存先にしない。
+
+### 4.9 `sa_request_folders`
+
+| 列名 | 型 | 意味・制約 |
+| --- | --- | --- |
+| `request_id` | String | 主キー。1依頼につき1行 |
+| `branch_id` | String | 依頼の営業所 |
+| `drive_folder_id` | String | 依頼別DriveフォルダID。フォルダ名は`request_id` |
+| `base_setting_id` | String | 作成時に使った保存先設定（`sa_branch_settings.setting_id`） |
+| `created_by_user_id` | String | 最初の成果物を登録したSA |
+| `created_at` | DateTime | 作成日時 |
+
+依頼へ最初に成果物を登録するときに、ロック下で1回だけ作成する。保存先設定を変更しても書き換えない。
 
 ## 5. 論理関係
 
@@ -190,8 +218,11 @@ sa_requests (request_id, branch_id, sales_user_id, assigned_sa_user_id)
     ├─ 1:N sa_attachments  ── drive_file_id → Google Drive
     ├─ 1:N sa_activity_log
     ├─ 1:N sa_notifications
-    └─ 1:N sa_read_cursors（採用時）
+    ├─ 1:N sa_read_cursors（採用時）
+    └─ 1:1 sa_request_folders ── drive_folder_id → Google Drive（依頼別フォルダ）
 ```
+
+`sa_branch_settings`は`branch_id`ごとに保存先を保持し、依頼別フォルダの作成先を決める。
 
 `branch_id`と`sales_user_id`は既存マスターの信頼できる識別子へ結合する。利用者の所属変更に伴う過去依頼の扱いは要確認。
 
@@ -204,6 +235,8 @@ sa_requests (request_id, branch_id, sales_user_id, assigned_sa_user_id)
 | 依頼 | 更新 | 認証・権限・遷移・排他を確認後、指定列だけ更新 |
 | メッセージ | 新規追記 | 送信済みの元投稿は保持し、訂正は別メッセージを追記。質問・回答・訂正の投稿はカード状態を変更しない。状態変更はカードの明示操作のみ |
 | 添付 | 新規関連付け | Drive保存成功、権限確認、参照ID登録 |
+| 営業所別設定 | 追記 | 所属営業所のSAだけが設定。過去の設定は削除・書換しない。最新の版が現在の設定 |
+| 依頼別フォルダ | 新規作成 | 最初の成果物登録時にロック下で1回だけ作成し、以後は書き換えない |
 | 操作履歴 | 追記 | 過去イベントを無断削除・書換しない |
 | 通知 | キュー更新 | SA向け新着は画面起動中の表示。SA質問・回答・完了の営業宛の1対1チャット通知は送信状態を別管理し、スレッド上の業務状態をChat配送結果に連動させない |
 | 既存データ | 物理更新 | 承認済み移行計画なしに全件上書き、シート削除・作り直しをしない |
@@ -226,7 +259,7 @@ sa_requests (request_id, branch_id, sales_user_id, assigned_sa_user_id)
 
 1. 確認済み（工程00）：`deal_records`の対象列と「SA依頼｜」保存形式。読取はSheets API読み取り専用。`record_id`は全体・SA行とも重複0件。所属の照合は営業所名の文字列で行う。
 2. 確定済み：`user_master`の列は`user_key`、`user_fullname`、`master_branch_name`、`active_flag`、`role`、`chat_id`、`company_name`。本人は`user_key`、所属は`master_branch_name`、権限は`role`（SA＝`sales_support`、営業＝`sales`）で判定し、`active_flag`が「有効」のみ許可する。`branch_master`は空のため使わない。
-3. 7シートの名称・主要列は本文で定義済み。実シートの列順・文字数上限・初期データは実装前の照合対象。
+3. 9シートの名称・主要列は本文で定義済み。実シートの列順・文字数上限・初期データは実装前の照合対象。
 4. 元IDの一意範囲、再取込時の更新許可範囲。
 5. カード側の明示的な状態変更、担当変更時の競合、完了後再開、添付差替えの詳細処理。スレッド投稿からの自動状態変更はしない。
 6. 既読・本人別表示順はsa_read_cursorsに保存する。営業通知は、営業1人ずつの1対1チャットのWebhook方式で確定（2026-10-30。全員向けの部屋への通知は行わない）。未検証は実送信と配送失敗時の回復方法（工程03）。
