@@ -20,6 +20,8 @@
   header.top h1 { font-size:17px; margin:0; flex:1; }
   .who { font-size:12px; color:var(--sub); }
   .busymsg { font-size:12px; color:var(--primary); white-space:nowrap; }
+  .bootmsg { position:fixed; inset:0; background:var(--bg); z-index:60; display:flex; align-items:center; justify-content:center; font-size:16px; color:var(--sub); }
+  .bootmsg.hidden { display:none; }
   .btn { min-height:44px; border:1px solid var(--line); background:#fff; padding:8px 16px; border-radius:10px; color:var(--ink); }
   .btn.primary { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
   .btn.small { min-height:36px; padding:4px 12px; font-size:13px; }
@@ -79,6 +81,7 @@
 </style>
 </head>
 <body>
+<div id="bootMsg" class="bootmsg" role="status" aria-live="polite">読み込み中です…</div>
 <div id="boot" data-rid="<?= initialRequestId ?>"></div>
 <header class="top"><div class="in"><h1>SA依頼</h1><div class="who" id="who"></div><span class="busymsg hidden" id="busyMsg" role="status" aria-live="polite"></span><button class="btn small" id="reload" type="button">更新</button></div></header>
 <main class="wrap">
@@ -129,6 +132,9 @@
   function api(name, arg, opts) {
     var kind = (opts && opts.quiet) ? 'quiet' : ((opts && opts.kind) || API_KIND[name] || 'load'), track = kind !== 'quiet';
     if (track) { BUSY.kinds[kind] = (BUSY.kinds[kind] || 0) + 1; busyShow(); }
+    var sent = {}; if (arg && typeof arg === 'object') { Object.keys(arg).forEach(function (k) { sent[k] = arg[k]; }); } else if (arg !== undefined) { sent = arg; }
+    if (sent && typeof sent === 'object') sent.actAs = 'sales';
+    arg = sent;
     return new Promise(function (resolve) {
       var done = function (res) { if (track) { BUSY.kinds[kind]--; busyShow(); } resolve(res); };
       var r = google.script.run.withSuccessHandler(done).withFailureHandler(function () { done({ success: false, error: { code: 'NETWORK', message: '通信に失敗しました。' } }); });
@@ -140,7 +146,18 @@
     (actions || []).forEach(function (a) { b.appendChild(el('button', { class: 'btn small', type: 'button', text: a.label, onclick: a.fn })); });
   }
   function hideBanner() { $('banner').classList.add('hidden'); }
+  // 本人確認・権限の失敗（CM-01）の文言。理由（reason）はAPIが返す。
+  function authText(res, who) {
+    var d = (res && res.error && res.error.details) || {}, r = d.reason;
+    var m = { email_missing: 'ログイン中のメールアドレスを取得できませんでした。会社のGoogleアカウントでログインし直してください。', not_in_master: '登録されていない担当者です。管理者に連絡してください。',
+      inactive: 'このアカウントは現在、利用が停止されています。管理者に連絡してください。', branch_missing: '所属営業所が設定されていません。管理者に連絡してください。' };
+    if (r === 'role_not_permitted') return 'この画面は' + who + 'です。あなたの役割は「' + (d.roleLabel || '') + '」のため、使えません。';
+    return m[r] || (res && res.error && res.error.message) || '利用できません。';
+  }
+  // 画面を開いた直後から出している「読み込み中です…」を消す（初期化が終わったとき・失敗したとき）
+  function hideBoot() { var b = document.getElementById('bootMsg'); if (b) b.classList.add('hidden'); }
   function gate(title, msg) {
+    hideBoot();
     var g = $('gate'); clear(g);
     g.appendChild(el('div', { class: 'box2' }, [el('h1', { text: title }), el('p', { text: msg }), el('p', { class: 'unconfirmed', text: 'データは表示も変更もされていません。' }), el('button', { class: 'btn', type: 'button', text: 'もう一度開く', onclick: function () { location.reload(); } })]));
     g.classList.remove('hidden');
@@ -148,7 +165,7 @@
   function firstErr(res) { var d = res && res.error && res.error.details; return d && d.errors && d.errors[0] ? d.errors[0].message : (res && res.error && res.error.message) || '入力内容を確認してください。'; }
   function handleFail(res, retryFn) {
     var code = res && res.error && res.error.code, msg = res && res.error && res.error.message;
-    if (code === 'AUTH_REQUIRED' || code === 'FORBIDDEN') { gate(code === 'AUTH_REQUIRED' ? '本人を確認できませんでした' : 'この操作は使えません', msg); return true; }
+    if (code === 'AUTH_REQUIRED' || code === 'FORBIDDEN') { gate(code === 'AUTH_REQUIRED' ? '本人を確認できませんでした' : 'この操作は使えません', authText(res, '営業担当者用')); return true; }
     if (code === 'NOT_FOUND') { showBanner('warn', 'この依頼は表示できません（別の営業所の依頼か、存在しない依頼です）。', [{ label: '一覧にもどる', fn: function () { hideBanner(); toList(); } }]); return true; }
     if (code === 'NETWORK') { showBanner('err', '通信に失敗しました。操作は反映されていない可能性があります。', retryFn ? [{ label: 'もう一度試す', fn: function () { hideBanner(); retryFn(); } }] : []); return true; }
     if (code === 'VALIDATION_ERROR') return false;
@@ -161,7 +178,7 @@
   function loadList(kind) {
     S.listBusy = true; renderList();
     return api('listRequests', listParams(), typeof kind === 'string' ? { kind: kind } : undefined).then(function (res) {
-      S.listBusy = false;
+      S.listBusy = false; hideBoot();
       if (!res.success) { if (!handleFail(res, loadList)) showBanner('err', firstErr(res)); renderList(); return; }
       S.items = res.data.items.slice().reverse(); S.total = res.data.total; S.counts = res.data.counts; hideBanner(); renderChips(); renderList();
     });
@@ -198,6 +215,7 @@
   function openDetail(id, kind) {
     S.selectedId = id; S.detail = null; $('listView').classList.add('hidden'); $('detailView').classList.remove('hidden'); renderDetail(true); window.scrollTo(0, 0);
     return api('getRequestDetail', { requestId: id }, typeof kind === 'string' ? { kind: kind } : undefined).then(function (res) {
+      hideBoot();
       if (S.selectedId !== id) return;
       if (!res.success) { if (!handleFail(res, function () { openDetail(id); })) showBanner('err', firstErr(res)); renderDetail(false, true); return; }
       hideBanner(); S.detail = res.data; renderDetail(); markRead(id);
@@ -311,7 +329,8 @@
     $('fStatus').addEventListener('change', function () { S.f.status = this.value; loadList(); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden && !S.selectedId && S.profile) loadList(); });
     api('getMyProfile').then(function (res) {
-      if (!res.success) { handleFail(res); return; }
+      if (!res.success) { hideBoot(); handleFail(res); return; }
+      if (res.data.role !== 'sales') { gate('この操作は使えません', 'この画面は営業担当者用です。あなたの役割は「' + res.data.roleLabel + '」のため、使えません。'); return; }
       S.profile = res.data; $('who').textContent = res.data.name + ' / ' + res.data.branch;
       var rid = $('boot').getAttribute('data-rid') || '';
       if (rid) openDetail(rid); else loadList();

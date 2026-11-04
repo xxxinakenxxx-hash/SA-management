@@ -42,6 +42,8 @@
   .search::before { content:"🔍"; position:absolute; left:12px; top:7px; font-size:13px; opacity:.6; }
   .top .spacer { flex:1; }
   .busymsg { font-size:12px; color:var(--primary); white-space:nowrap; }
+  .bootmsg { position:fixed; inset:0; background:var(--bg); z-index:60; display:flex; align-items:center; justify-content:center; font-size:16px; color:var(--sub); }
+  .bootmsg.hidden { display:none; }
   .chip { font-size:12px; color:var(--sub); background:var(--gray-weak); padding:3px 10px; border-radius:999px; white-space:nowrap; }
   .btn { border:1px solid var(--line); background:#fff; padding:6px 14px; border-radius:8px; color:var(--ink); }
   .btn:hover:not(:disabled) { background:#f6f8fc; }
@@ -170,6 +172,7 @@
 </style>
 </head>
 <body>
+<div id="bootMsg" class="bootmsg" role="status" aria-live="polite">読み込み中です…</div>
 <div class="app">
   <aside class="side">
     <div class="brand">AIメモSA管理<small>SA依頼ワークスペース</small></div>
@@ -274,7 +277,18 @@
     b.classList.remove('hidden');
   }
   function hideBanner() { $('banner').classList.add('hidden'); }
+  // 本人確認・権限の失敗（CM-01）の文言。理由（reason）はAPIが返す。
+  function authText(res, who) {
+    var d = (res && res.error && res.error.details) || {}, r = d.reason;
+    var m = { email_missing: 'ログイン中のメールアドレスを取得できませんでした。会社のGoogleアカウントでログインし直してください。', not_in_master: '登録されていない担当者です。管理者に連絡してください。',
+      inactive: 'このアカウントは現在、利用が停止されています。管理者に連絡してください。', branch_missing: '所属営業所が設定されていません。管理者に連絡してください。' };
+    if (r === 'role_not_permitted') return 'この画面は' + who + 'です。あなたの役割は「' + (d.roleLabel || '') + '」のため、使えません。';
+    return m[r] || (res && res.error && res.error.message) || '利用できません。';
+  }
+  // 画面を開いた直後から出している「読み込み中です…」を消す（初期化が終わったとき・失敗したとき）
+  function hideBoot() { var b = document.getElementById('bootMsg'); if (b) b.classList.add('hidden'); }
   function gate(title, message) {
+    hideBoot();
     var g = $('gate'); clear(g);
     g.appendChild(el('div', { class: 'card' }, [el('h1', { text: title }), el('p', { text: message }), el('p', { class: 'unconfirmed', text: 'データは表示も変更もされていません。' }),
       el('button', { class: 'btn', type: 'button', text: 'もう一度開く', onclick: function () { location.reload(); } })]));
@@ -283,7 +297,7 @@
   // 失敗の種類ごとの表示。戻り値：true なら呼び出し側が続きの処理をしない。
   function handleFail(res, retryFn) {
     var code = res && res.error && res.error.code, msg = res && res.error && res.error.message;
-    if (code === 'AUTH_REQUIRED' || code === 'FORBIDDEN') { gate(code === 'AUTH_REQUIRED' ? '本人を確認できませんでした' : 'この操作は使えません', msg); return true; }
+    if (code === 'AUTH_REQUIRED' || code === 'FORBIDDEN') { gate(code === 'AUTH_REQUIRED' ? '本人を確認できませんでした' : 'この操作は使えません', authText(res, 'SA担当者（営業支援担当）用')); return true; }
     if (code === 'CONFLICT') { showBanner('warn', msg, [{ label: '最新を読み込む', fn: function () { hideBanner(); reloadAll(); } }]); reloadAll(); return true; }
     if (code === 'NOT_FOUND') { showBanner('warn', msg, [{ label: '一覧を更新', fn: function () { hideBanner(); S.selectedId = null; S.detail = null; reloadAll(); } }]); return true; }
     if (code === 'NETWORK') { showBanner('err', '通信に失敗しました。操作は反映されていない可能性があります。', retryFn ? [{ label: 'もう一度試す', fn: function () { hideBanner(); retryFn(); } }] : []); return true; }
@@ -365,7 +379,8 @@
   /* ---------- 起動 ---------- */
   function init() {
     api('getMyProfile').then(function (res) {
-      if (!res.success) { handleFail(res); return; }
+      if (!res.success) { hideBoot(); handleFail(res); return; }
+      if (res.data.role !== 'sa') { gate('この操作は使えません', 'この画面はSA担当者（営業支援担当）用です。あなたの役割は「' + res.data.roleLabel + '」のため、使えません。'); return; }
       S.profile = res.data;
       clear($('me')); $('me').appendChild(el('b', { text: res.data.name })); $('me').appendChild(document.createTextNode(res.data.roleLabel + ' / ' + res.data.branch));
       $('branchChip').textContent = res.data.branch;
@@ -409,7 +424,7 @@
     if (resetOrder) { S.order = null; S.dirtyOrder = false; }
     S.listBusy = true; renderList();
     return api('listRequests', listParams(), kind ? { kind: kind } : undefined).then(function (res) {
-      S.listBusy = false;
+      S.listBusy = false; hideBoot();
       if (!res.success) { if (!handleFail(res, function () { refreshList(); })) showBanner('err', firstErr(res)); renderList(); return; }
       S.items = res.data.items; S.counts = res.data.counts; S.total = res.data.total;
       renderKpis(); renderNav(); renderList(); afterListLoaded();

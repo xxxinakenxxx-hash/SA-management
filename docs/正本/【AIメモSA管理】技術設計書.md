@@ -92,7 +92,7 @@ GAS内の営業用画面（`doGet` の `view` で切替）で、鹿児島のSA�
 
 ### 4.3 Web公開方法
 
-SA画面・営業スマホ画面ともGASの中に置く（`HtmlService.createTemplateFromFile` ＋ `evaluate`、`google.script.run`、`doGet` の `view` で切替、`viewport` 指定）。営業AIと同じ作りとする。公開は「実行＝デプロイ者、アクセス＝組織内」。本番画面をGitHub Pagesに置かない。現在のGitHub Pagesは**モック公開先**であり、変更しない。Publicリポジトリ／公開静的サイトに顧客情報、SA依頼内容、業務APIの秘密、認証情報を置かない。
+SA画面・営業スマホ画面ともGASの中に置く（`HtmlService.createTemplateFromFile` ＋ `evaluate`、`google.script.run`、`doGet` の `view` で切替、`viewport` 指定）。営業AIと同じ作りとする。画面の枠（HTML）は、本人確認を待たずにすぐ返し（本人確認のための表の読み取りで、白い画面が続かないようにする）、画面は開いた直後から「読み込み中です…」を表示する。本人確認と権限の検査は、画面が最初に呼ぶAPI-01と、すべてのAPIでサーバー側が行い、権限がなければ画面がCM-01を出す。画面のHTMLに、業務データ・顧客情報は含めない。公開は「実行＝デプロイ者、アクセス＝組織内」。本番画面をGitHub Pagesに置かない。現在のGitHub Pagesは**モック公開先**であり、変更しない。Publicリポジトリ／公開静的サイトに顧客情報、SA依頼内容、業務APIの秘密、認証情報を置かない。
 
 ## 5. 認証・権限制御
 
@@ -106,7 +106,7 @@ SA画面・営業スマホ画面ともGASの中に置く（`HtmlService.createTe
 
 ### 5.2 本人判定の方式
 
-営業AIと同じ方式とする。`Session.getActiveUser().getEmail()` を営業AIの `user_master.user_key` と照合し（前後の空白・大文字小文字は無視）、`active_flag` が「有効」の利用者だけを許可する。SA＝`role` が `sales_support`、営業＝`sales`。マスターは複製せず直接参照する。GAS Webアプリの公開は「実行＝デプロイ者、アクセス＝組織内」とする。認証情報をURL、ローカルストレージ、Public GitHub、ソースに固定保存しない。
+営業AIと同じ方式とする。`Session.getActiveUser().getEmail()` を営業AIの `user_master.user_key` と照合し（前後の空白・大文字小文字は無視）、`active_flag` が「有効」の利用者だけを許可する。SA＝`role` が `sales_support`、営業＝`sales`。システム管理者（`sysadmin`）は、SA画面と営業スマホ画面の両方を、自分の所属営業所の範囲で使え、画面が各APIに指定する役割（`actAs`＝`sa`／`sales`。省略時は`sa`）で動く。`actAs`は`sysadmin`の本人にだけ有効で、他の役割では無視する。マスターは複製せず直接参照する。GAS Webアプリの公開は「実行＝デプロイ者、アクセス＝組織内」とする。認証情報をURL、ローカルストレージ、Public GitHub、ソースに固定保存しない。
 
 ## 6. フロントエンドとGASの通信
 
@@ -223,7 +223,7 @@ SAが質問・回答・完了した場合の営業向け通知手段は、営業
 ## 13. 残る技術検証と実装時確認
 
 1. 取込方式は確定（Sheets API 読み取り専用・5分ごと）。対象期間は鹿児島導入時に決める。
-2. 確定済み（工程00）：営業AIと同じ本人判定（`Session.getActiveUser().getEmail()` と `user_master.user_key` の照合、SA＝`sales_support`）。実装は工程02。
+2. 確定済み（工程00）：営業AIと同じ本人判定（`Session.getActiveUser().getEmail()` と `user_master.user_key` の照合、SA＝`sales_support`。`sysadmin`は両画面可）。実装は工程02。
 3. 確定済み：画面をGASの中に置くため、静的ホストとGASの通信は行わない。
 4. 確定済み：SA管理画面を開いている間、3秒ごとの問い合わせで新着を表示する。閉アプリ通知は初期対象外。
 5. 確定済み：営業への通知は、営業1人ずつの1対1チャットに置いたGoogle Chat Webhook（表示名「SA依頼」）で、その営業にだけ送る（2026-10-30決定。送り先はスクリプトプロパティ SA_CHAT_WEBHOOK_<営業のuser_key>。全員向けの部屋への通知は行わない）。実送信は工程03で確認する。

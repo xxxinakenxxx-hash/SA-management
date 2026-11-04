@@ -11,7 +11,7 @@ function errorResponse_(code, details, requestId) {
 function executeApi_(ctx, handler) {
   var rid = Utilities.getUuid();
   try {
-    if (!ctx || !ctx.ok) return errorResponse_((ctx && ctx.code) || 'AUTH_REQUIRED', ctx && ctx.reason ? { reason: ctx.reason } : null, rid);
+    if (!ctx || !ctx.ok) return errorResponse_((ctx && ctx.code) || 'AUTH_REQUIRED', ctx && ctx.reason ? { reason: ctx.reason, roleLabel: ctx.masterRole ? (SA_ROLE_LABELS_[ctx.masterRole] || ctx.masterRole) : '' } : null, rid);
     return okResponse_(handler(ctx), rid);
   } catch (e) {
     if (e && e.saCode) return errorResponse_(e.saCode, e.details, rid);
@@ -19,10 +19,10 @@ function executeApi_(ctx, handler) {
   }
 }
 
-function runApi_(handler) {
+function runApi_(handler, params) {
   var ctx;
   try { ctx = resolveAuthenticatedUser_(); } catch (e) { return errorResponse_('STORAGE_ERROR', null, Utilities.getUuid()); }
-  return executeApi_(ctx, handler);
+  return executeApi_(applyActAs_(ctx, params), handler);
 }
 
 function parseInput_(operation, params) {
@@ -80,11 +80,11 @@ function allowedStatusTargets_(o) {
 // ---- API-01 getMyProfile ----
 function handleGetMyProfile_(ctx) {
   return {
-    userId: ctx.userId, name: ctx.name, role: ctx.role, roleLabel: SA_ROLE_LABELS_[ctx.role], branch: ctx.branch,
+    userId: ctx.userId, name: ctx.name, role: ctx.role, roleLabel: ctx.masterRole === 'sysadmin' ? SA_ROLE_LABELS_.sysadmin : SA_ROLE_LABELS_[ctx.role], branch: ctx.branch,
     saCandidates: ctx.role === 'sa' ? listBranchSas_(ctx.branch, readUserMasterRows_()) : []
   };
 }
-function getMyProfile() { return runApi_(handleGetMyProfile_); }
+function getMyProfile(params) { return runApi_(handleGetMyProfile_, params); }
 
 // ---- API-02 listRequests ----
 function handleListRequests_(ctx, params) {
@@ -128,7 +128,7 @@ function handleListRequests_(ctx, params) {
   var start = (v.page - 1) * v.pageSize;
   return { items: items.slice(start, start + v.pageSize), total: items.length, page: v.page, pageSize: v.pageSize, counts: counts };
 }
-function listRequests(params) { return runApi_(function (ctx) { return handleListRequests_(ctx, params); }); }
+function listRequests(params) { return runApi_(function (ctx) { return handleListRequests_(ctx, params); }, params); }
 
 // ---- API-03 getRequestDetail ----
 function readMessagesFor_(requestId, names, viewer, lastReadId) {
@@ -194,7 +194,7 @@ function handleGetRequestDetail_(ctx, params) {
   if (isSa) data.saNote = String(o.sa_note || '');
   return data;
 }
-function getRequestDetail(params) { return runApi_(function (ctx) { return handleGetRequestDetail_(ctx, params); }); }
+function getRequestDetail(params) { return runApi_(function (ctx) { return handleGetRequestDetail_(ctx, params); }, params); }
 
 // ---- 依頼を更新する操作（API-04・05・06・13・15）の共通処理 ----
 // ロックの中で「二重送信の確認 → 権限 → 版番号の確認 → 更新 → 履歴」を行う。履歴の追記に失敗したら更新を巻き戻す。
@@ -230,7 +230,7 @@ function handleClaimRequest_(ctx, params) {
     describe: function (before, after) { return { before: '', after: after.assigned_sa_user_id }; }
   });
 }
-function claimRequest(params) { return runApi_(function (ctx) { return handleClaimRequest_(ctx, params); }); }
+function claimRequest(params) { return runApi_(function (ctx) { return handleClaimRequest_(ctx, params); }, params); }
 
 // ---- API-05 reassignRequest ----
 function handleReassignRequest_(ctx, params) {
@@ -250,7 +250,7 @@ function handleReassignRequest_(ctx, params) {
     describe: function (before, after) { return { before: before.assigned_sa_user_id, after: after.assigned_sa_user_id + (v.reason ? ' / ' + v.reason : '') }; }
   });
 }
-function reassignRequest(params) { return runApi_(function (ctx) { return handleReassignRequest_(ctx, params); }); }
+function reassignRequest(params) { return runApi_(function (ctx) { return handleReassignRequest_(ctx, params); }, params); }
 
 // ---- API-06 changeRequestStatus（完了への変更は受け付けない。完了登録は API-11 のみ）----
 function handleChangeRequestStatus_(ctx, params) {
@@ -273,7 +273,7 @@ function handleChangeRequestStatus_(ctx, params) {
     describe: function (before, after) { return { before: before.status, after: after.status }; }
   });
 }
-function changeRequestStatus(params) { return runApi_(function (ctx) { return handleChangeRequestStatus_(ctx, params); }); }
+function changeRequestStatus(params) { return runApi_(function (ctx) { return handleChangeRequestStatus_(ctx, params); }, params); }
 
 // ---- API-13 updateSaNote（完了コメントとは別の備考）----
 function handleUpdateSaNote_(ctx, params) {
@@ -285,7 +285,7 @@ function handleUpdateSaNote_(ctx, params) {
     describe: function (before, after) { return { before: '(' + String(before.sa_note || '').length + '文字)', after: '(' + String(after.sa_note || '').length + '文字)' }; }
   });
 }
-function updateSaNote(params) { return runApi_(function (ctx) { return handleUpdateSaNote_(ctx, params); }); }
+function updateSaNote(params) { return runApi_(function (ctx) { return handleUpdateSaNote_(ctx, params); }, params); }
 
 // ---- API-15 correctRequestDueDate（元の依頼文 source_original_text は変更しない）----
 function handleCorrectRequestDueDate_(ctx, params) {
@@ -300,7 +300,7 @@ function handleCorrectRequestDueDate_(ctx, params) {
     describe: function (before, after) { return { before: pack(before), after: pack(after) }; }
   });
 }
-function correctRequestDueDate(params) { return runApi_(function (ctx) { return handleCorrectRequestDueDate_(ctx, params); }); }
+function correctRequestDueDate(params) { return runApi_(function (ctx) { return handleCorrectRequestDueDate_(ctx, params); }, params); }
 
 // ---- API-14 saveMyRequestOrder（本人の sa_read_cursors.sort_order だけを更新）----
 function cursorIdFor_(userId, requestId) {
@@ -355,7 +355,7 @@ function handleSaveMyRequestOrder_(ctx, params) {
     return { duplicate: false, order: readCursorsFor_(ctx.userId) };
   });
 }
-function saveMyRequestOrder(params) { return runApi_(function (ctx) { return handleSaveMyRequestOrder_(ctx, params); }); }
+function saveMyRequestOrder(params) { return runApi_(function (ctx) { return handleSaveMyRequestOrder_(ctx, params); }, params); }
 
 // ---- API-07 postMessage（SA／営業）。投稿でカードの状態・版番号は変えない ----
 function handlePostMessage_(ctx, params) {
@@ -402,7 +402,7 @@ function handlePostMessage_(ctx, params) {
     message: { messageId: String(m.message_id), senderName: displayName_(names, m.sender_user_id), senderRole: String(m.sender_role), senderRoleLabel: SA_ROLE_NAMES_[String(m.sender_role)] || String(m.sender_role),
       messageType: String(m.message_type), body: String(m.body), createdAt: String(m.created_at), correctsMessageId: String(m.corrects_message_id || ''), mine: true, unread: false } };
 }
-function postMessage(params) { return runApi_(function (ctx) { return handlePostMessage_(ctx, params); }); }
+function postMessage(params) { return runApi_(function (ctx) { return handlePostMessage_(ctx, params); }, params); }
 
 // ---- API-08 markThreadRead（本人の既読位置だけを更新）----
 function handleMarkThreadRead_(ctx, params) {
@@ -417,7 +417,7 @@ function handleMarkThreadRead_(ctx, params) {
     return { lastReadMessageId: upTo, unreadCount: unreadCountFor_(thread, upTo, ctx.userId) };
   });
 }
-function markThreadRead(params) { return runApi_(function (ctx) { return handleMarkThreadRead_(ctx, params); }); }
+function markThreadRead(params) { return runApi_(function (ctx) { return handleMarkThreadRead_(ctx, params); }, params); }
 
 // ---- API-12 getActivityHistory（営業には公開対象の種類だけ）----
 var SA_EVENT_LABELS_ = { claimed: '担当を引き受け', reassigned: '担当を変更', status_changed: '状態を変更', note_updated: '備考を更新', due_corrected: '期限を訂正', order_changed: '並び順を保存',
@@ -451,4 +451,4 @@ function handleGetActivityHistory_(ctx, params) {
   var size = 50, start = (v.page - 1) * size;
   return { items: events.slice(start, start + size), total: events.length, page: v.page, pageSize: size };
 }
-function getActivityHistory(params) { return runApi_(function (ctx) { return handleGetActivityHistory_(ctx, params); }); }
+function getActivityHistory(params) { return runApi_(function (ctx) { return handleGetActivityHistory_(ctx, params); }, params); }

@@ -53,12 +53,25 @@ function classifyUserByEmail_(email, rows) {
   var base = { userId: hit.userKey, name: hit.name || hit.userKey, branch: hit.branch, masterRole: hit.masterRole };
   function fail(reason) { base.ok = false; base.code = 'FORBIDDEN'; base.reason = reason; return base; }
   if (hit.active !== '有効') return fail('inactive');
-  var role = SA_ROLE_MAP_[hit.masterRole];
+  // システム管理者（sysadmin）は、SA画面と営業画面の両方を、自分の所属営業所の範囲で使える（役割は画面の指定 actAs で決まる。既定はSA）。
+  var role = hit.masterRole === 'sysadmin' ? 'sa' : SA_ROLE_MAP_[hit.masterRole];
   if (!role) return fail('role_not_permitted');
   if (!hit.branch) return fail('branch_missing');
   base.ok = true;
   base.role = role;
   return base;
+}
+
+// sysadmin だけ、画面から指定された役割（'sa'／'sales'）で動く。他の役割（sales_support・sales）には効かず、本人の役割のまま。
+// 指定できる値は2つだけで、所属営業所の条件は変わらない。指定がなければSA。
+function applyActAs_(ctx, params) {
+  if (!ctx || !ctx.ok || ctx.masterRole !== 'sysadmin') return ctx;
+  var want = params && typeof params === 'object' ? params.actAs : undefined;
+  if (want !== 'sa' && want !== 'sales') want = 'sa';
+  var c = {};
+  Object.keys(ctx).forEach(function (k) { c[k] = ctx[k]; });
+  c.role = want;
+  return c;
 }
 
 // FN-01：呼び出し中の利用者を確定する。
