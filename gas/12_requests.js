@@ -31,14 +31,27 @@ function findRequestById_(requestId) {
   return null;
 }
 
+// 書き込みの確定（SpreadsheetApp.flush）。3回まで試し、それでも失敗したら保存失敗にする（失敗を握りつぶして処理を続けない）。
+function commitPendingWrites_() {
+  for (var i = 0; i < 3; i++) {
+    try { SpreadsheetApp.flush(); return; } catch (e) { if (i < 2) Utilities.sleep(300); }
+  }
+  throw saError_('STORAGE_ERROR', { reason: 'flush_failed' });
+}
+
 // ロックの中で fn を実行する。取れなければ保存失敗として扱う。
+// 鍵を取った直後に確定処理を挟む。挟まないと、直前に別の処理が書いた内容が古いまま見えて、同時更新を防げない（実GASで確認）。
+// 確定できなければ、何も読み書きせずに保存失敗で終える。鍵を手放す前にも確定し、できなければ保存失敗として返す（成功とは報告しない）。
 function withScriptLock_(fn) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw saError_('STORAGE_ERROR', { reason: 'lock_timeout' });
-  // 鍵を取った直後に確定処理を挟む。挟まないと、直前に別の処理が書いた内容が古いまま見えることがあり、同時更新を防げない（実GASで確認）。
-  try { if (typeof SpreadsheetApp.flush === 'function') SpreadsheetApp.flush(); } catch (e0) { /* 確定できなくても処理は続ける */ }
-  // ロックを手放す前にも、書き込みを確定させる。
-  try { return fn(); } finally { try { if (typeof SpreadsheetApp.flush === 'function') SpreadsheetApp.flush(); } catch (e) { /* 確定できなくても、ロックは必ず手放す */ } lock.releaseLock(); }
+  try {
+    commitPendingWrites_();
+    var out;
+    try { out = fn(); } catch (e) { try { SpreadsheetApp.flush(); } catch (e2) { /* 取り消しの書き込みを確定できなくても、元のエラーを返す */ } throw e; }
+    commitPendingWrites_();
+    return out;
+  } finally { lock.releaseLock(); }
 }
 
 // FN-07：指定列だけを更新する。呼び出し側がロックを持っていること。

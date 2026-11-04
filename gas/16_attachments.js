@@ -150,6 +150,10 @@ function handleRegisterAttachment_(ctx, params) {
       return { att: att };
     });
   } catch (e) {
+    // 鍵を手放す前の確定に失敗しただけで、登録自体は保存されている場合は、保存したファイルを消さない（添付行がファイルを指したまま残るのを防ぐ）。
+    var saved = null;
+    try { var m = findMessageByOperation_(ctx.userId, v.clientOperationId); saved = m && String(m.obj.message_type) === SA_ATTACH_LINK_TYPE_ ? findAttachmentById_(String(m.obj.attachment_id)) : null; } catch (e3) { saved = null; }
+    if (saved && String(saved.obj.drive_file_id) === stored.driveFileId) throw e;
     discardDriveFile_(ctx.userId, v.requestId, stored.driveFileId);
     throw e;
   }
