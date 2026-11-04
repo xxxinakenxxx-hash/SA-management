@@ -1,22 +1,13 @@
 // FN-10 storeAttachmentInDrive_／API-09 registerAttachment／API-10 getAttachmentAccess：成果物（添付）の保存と取得。
-// 保存先は営業所別のDriveフォルダ。フォルダIDはスクリプトプロパティ SA_DRIVE_FOLDER_<branch_id> に持つ（値はコードに書かない）。
+// 保存先は、営業所のSAがSA画面（SA-05）で設定したDriveフォルダの配下に作る依頼別フォルダ（FN-19）。設定は表 sa_branch_settings に持つ。
 // Driveには drive.file（このアプリが作ったファイルだけ扱える）の範囲で保存し、共有設定は変えない。
 // ファイルの取得は、依頼本文の閲覧権限とは別に、本人と返却対象を検査してからアプリが中身を返す（Driveの共有リンクは渡さない）。
 
-var SA_DRIVE_FOLDER_PREFIX_ = 'SA_DRIVE_FOLDER_';
 var SA_ATTACH_MAX_BYTES_ = 10 * 1024 * 1024; // 暫定の上限（容量は正本で未確定。10MB）
 var SA_ATTACH_BASE64_MAX_ = Math.ceil(SA_ATTACH_MAX_BYTES_ / 3) * 4 + 8;
 var SA_ATTACH_ID_PATTERN_ = /^AT-\d{8}-[0-9A-F]{8}$/;
 var SA_ATTACH_LINK_TYPE_ = 'attachment_link';
 var SA_ATTACH_FILENAME_MAX_ = 200;
-
-// ---- 営業所別のDriveフォルダ（設定が無い・形が不正なら空文字）----
-function driveFolderIdFor_(branchId) {
-  var b = String(branchId || '').trim();
-  if (!b) return '';
-  var v = String(PropertiesService.getScriptProperties().getProperty(SA_DRIVE_FOLDER_PREFIX_ + b) || '').trim();
-  return /^[A-Za-z0-9_-]{10,}$/.test(v) ? v : '';
-}
 
 // ---- Driveとの実際のやり取り（試験ではこの4つを差し替える）----
 function driveCreateFile_(folderId, fileName, mimeType, bytes) {
@@ -43,9 +34,8 @@ function storageError_(reason, message) {
 
 // FN-10：ファイルをDriveに保存し、メタデータと共有範囲を確かめる。失敗したら保存したファイルを消して STORAGE_ERROR。
 // 戻り値：{ driveFileId, size }。呼び出し側は、成功した後にだけ sa_attachments へ登録する。
-function storeAttachmentInDrive_(branchId, fileName, mimeType, bytes) {
-  var folderId = driveFolderIdFor_(branchId);
-  if (!folderId) throw storageError_('folder_not_set', '成果物の保存先フォルダが設定されていません。管理者に連絡してください。');
+function storeAttachmentInDrive_(branchId, requestId, actorId, fileName, mimeType, bytes) {
+  var folderId = resolveRequestFolder_(branchId, requestId, actorId); // 設定が無ければ folder_not_set で拒否。依頼別フォルダは無ければ作る
   var file = null;
   try { file = driveCreateFile_(folderId, fileName, mimeType, bytes); } catch (e) { file = null; }
   if (!file || !file.id) throw storageError_('drive_write_failed', '成果物を保存できませんでした。保存先フォルダを確認して、もう一度試してください。');
@@ -53,7 +43,7 @@ function storeAttachmentInDrive_(branchId, fileName, mimeType, bytes) {
   if (file.size !== null && file.size !== undefined && Number(file.size) !== bytes.length) { drop(); throw storageError_('metadata_mismatch', '保存したファイルの大きさが一致しませんでした。もう一度試してください。'); }
   var types;
   try { types = drivePermissionTypes_(file.id); } catch (e3) { drop(); throw storageError_('permission_check_failed', '保存したファイルの共有範囲を確認できませんでした。もう一度試してください。'); }
-  if (types.indexOf('anyone') >= 0 || types.indexOf('domain') >= 0) { drop(); throw storageError_('too_open', '保存先フォルダの共有範囲が広すぎるため、保存しませんでした。管理者に連絡してください。'); }
+  if (types.indexOf('anyone') >= 0 || types.indexOf('domain') >= 0) { drop(); throw storageError_('too_open', '保存先フォルダの共有範囲が広すぎるため、保存しませんでした。共有範囲の狭いフォルダを「保存先設定」で指定してください。'); }
   return { driveFileId: file.id, size: bytes.length };
 }
 
@@ -124,7 +114,7 @@ function handleRegisterAttachment_(ctx, params) {
   try { bytes = Utilities.base64Decode(v.contentBase64); } catch (e) { throw validationError_('file', 'ファイルの内容を読み取れませんでした。', 'BASE64_INVALID'); }
   if (!bytes || !bytes.length) throw validationError_('file', '空のファイルは登録できません。', 'EMPTY_FILE');
   if (bytes.length > SA_ATTACH_MAX_BYTES_) throw validationError_('file', 'ファイルが大きすぎます（上限は' + Math.floor(SA_ATTACH_MAX_BYTES_ / 1048576) + 'MBです）。', 'FILE_TOO_LARGE');
-  var stored = storeAttachmentInDrive_(String(cur.obj.branch_id), v.fileName, v.mimeType, bytes);
+  var stored = storeAttachmentInDrive_(String(cur.obj.branch_id), v.requestId, ctx.userId, v.fileName, v.mimeType, bytes);
   var evId = eventIdFor_(ctx.userId, 'registerAttachment', v.clientOperationId);
   var out;
   try {

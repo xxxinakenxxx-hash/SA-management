@@ -59,13 +59,15 @@
 | API-06 | `changeRequestStatus` | SA | request_id、次状態（未担当／対応中／営業回答待ち）、前提条件 | カードの明示操作による進捗更新・履歴追加。完了登録はAPI-11のみ | FR-08/14 |
 | API-07 | `postMessage` | SA/営業 | request_id、body、message_type、client_operation_id、corrects_message_id（任意）、attachment_id（任意） | 追加メッセージのmessage_id。SAの質問・回答は、その営業の1対1チャットへの通知として登録する（FN-11）。カード状態は変更しない | FR-09/10/11/15/16 |
 | API-08 | `markThreadRead` | SA/営業 | request_id、既読位置 | 当該本人の既読情報更新 | FR-11 |
-| API-09 | `registerAttachment` | SA | request_id、GAS内画面から`google.script.run`で送り、`drive.file`で保存 | Drive保存・添付参照と履歴 | FR-12/14 |
+| API-09 | `registerAttachment` | SA | request_id、GAS内画面から`google.script.run`で送り、`drive.file`で保存 | Drive保存（営業所の保存先の配下に作る依頼別フォルダ。無ければ自動作成）・添付参照と履歴 | FR-12/14/25 |
 | API-10 | `getAttachmentAccess` | SA/営業 | attachment_id、request_id | 認可済みファイルの安全な参照導線 | FR-12/18/19 |
 | API-11 | `completeRequest` | SA | request_id、完了コメント、返却添付ID群（0件可）、更新前提条件 | 唯一の完了登録経路。完了状態・履歴を保存しGoogle Chat通知を別キュー管理 | FR-13/14/16 |
 | API-12 | `getActivityHistory` | SA（営業は公開対象のみ） | request_id、ページング | 認可範囲の操作履歴 | FR-14 |
 | API-13 | `updateSaNote` | SA | request_id、sa_note、expected_row_version、client_operation_id | sa_requests.sa_note更新、row_versionと監査履歴 | SA備考 |
 | API-14 | `saveMyRequestOrder` | SA | ordered_request_ids、expected_sort_versions、client_operation_id | 本人のsa_read_cursors.sort_orderだけを更新。別SAの並び順・カード状態を変更しない | SA本人別並び順 |
 | API-15 | `correctRequestDueDate` | SA | request_id、sa_due_date_text、sa_due_date、sa_due_urgent、expected_row_version、client_operation_id | 元原文を保持したまま訂正値・訂正者・日時・監査履歴を記録 | 相対期限訂正 |
+| API-16 | `getBranchStorageSetting` | SA | なし（営業所は本人の所属から決める） | 本人の所属営業所の保存先設定（設定の有無・フォルダURL・設定者・設定日時・設定の版）。他営業所の設定は返さない | FR-25 |
+| API-17 | `saveBranchStorageSetting` | SA | folder_url、expected_setting_version、client_operation_id | 本人の所属営業所の保存先を登録・変更し、設定履歴を追記 | FR-25 |
 
 取込処理・通知配送は公開画面から自由実行できるAPIにせず、認可された内部処理として扱う。添付アップロードの実体通信方式はGASのサイズ・認証・ホスティングの技術検証が必要。
 
@@ -75,12 +77,17 @@
 - **API-14：本人別並び順**。`ordered_request_ids`は認可済みの同一営業所の依頼IDだけを許可。サーバーが本人IDを解決し`sa_read_cursors`の`user_id × request_id`行をロック下で更新。重複ID・他営業所IDは拒否。未指定の新規依頼は末尾、未設定なら受付日時＋ID順。本人以外の並び順に触れない。応答は本人の並び順・更新版。
 - **API-15：期限訂正**。SAのみ。元の`source_original_text`は変更せず、解釈日が必要な場合は`yyyy-MM-dd`で受け取り、急ぎ表現なら日付なしも許可。`sa_due_date_text`、`sa_due_date`、`sa_due_urgent`を整合検証し履歴に残す。応答に訂正後の値・`row_version`を返す。
 - **API-06とAPI-11**：通常のカード状態変更はAPI-06、**完了への変更はAPI-11のみ**。API-06の`completed`指定は拒否。営業回答待ちからも完了操作を許可。完了後の明示的な再開はAPI-06で`in_progress`へ変更可能。メッセージ投稿でカード状態を変更しない。
-- **API-09/10**：添付は`request_id`とリンク投稿`message_id`を対応付け、`attachment_id`の同一依頼一致を確認。一般公開Driveリンクは返さず、取得者ごとに権限を再確認する。
+- **API-09/10**：添付は`request_id`とリンク投稿`message_id`を対応付け、`attachment_id`の同一依頼一致を確認。一般公開Driveリンクは返さず、取得者ごとに権限を再確認する。API-09はFN-19で依頼別フォルダを確定してから保存する。API-10は、保存先設定が変わった後でも、添付のDriveファイルIDで取得する。
 - **SA向け画面通知**：起動中のみ新着・未読をAPI-02/03/08で差分更新。営業へは質問・回答・完了の保存成功を起点に、その営業の1対1チャットへの通知（FN-11）を登録し、配送結果を本体保存と分離する。
 
-### 3.2 営業所別Drive設定
+### 3.2 営業所別Drive保存先設定（API-16/17）
 
-新しいSA設定画面やSA管理者ロールは作らない。既存運用権限でSA管理GASのScript Propertiesキー`SA_DRIVE_FOLDER_<branch_id>`を管理する。ファイル登録時に認証済みSAの所属`branch_id`からフォルダIDを読み、フォルダ到達・書込権限を検査する。キー欠落・権限不足・不正フォルダなら`STORAGE_ERROR`として保存しない。設定変更は既存運用記録に操作者・日時・対象営業所を残す。設定・変更は管理者（ユーザー本人）がGASのスクリプトプロパティで行い、`tasks/CHAT_CURRENT.md` に記録する。
+新しい設定画面やSA管理者ロールは作らない。SA-01内の保存先設定ダイアログ（SA-05）から使う。Script Propertiesは使わない。
+
+- 対象営業所は、サーバーが認証済みの本人の所属から決める。入力に営業所IDが含まれていても使わず、本人の所属と異なる場合は`FORBIDDEN`。営業は`FORBIDDEN`。
+- **API-16**：本人の所属営業所の現在の設定を返す（未設定なら未設定）。応答は、設定の有無・フォルダURL・設定者の表示名・設定日時・設定の版。
+- **API-17**：folder_url（Driveのフォルダ共有URL。`https://drive.google.com/drive/folders/<ID>`、`https://drive.google.com/drive/u/<番号>/folders/<ID>`、`https://drive.google.com/open?id=<ID>`の形）を受け取り、FN-16でフォルダIDを取り出す（形式不正は`VALIDATION_ERROR`）。FN-18で書込可否を確認し、確認できなければ`STORAGE_ERROR`として保存しない。ロック下で`expected_setting_version`を現在の設定の版と照合し（不一致は`CONFLICT`）、他営業所が設定済みのフォルダ・依頼別フォルダとして使われているフォルダは`VALIDATION_ERROR`で拒否し、`sa_branch_settings`へ追記する。現在の設定と同じフォルダの再送は、追記せず同じ結果を返す。応答は設定後の設定内容。
+- 設定・変更の操作者・日時・営業所は`sa_branch_settings`に残る。Driveの共有設定は変更しない。ファイル登録時の保存先の解決と依頼別フォルダの作成はFN-19が行い、未設定・到達不能・権限不足は`STORAGE_ERROR`として保存しない。
 
 ## 4. バッチ・内部関数一覧（候補）
 
@@ -95,12 +102,16 @@
 | FN-07 | `updateRequestWithVersion_` | 競合回避・指定列更新 | `sa_requests` |
 | FN-08 | `appendMessage_` | 発言保存、二重送信防止候補 | `sa_messages` |
 | FN-09 | `appendActivityEvent_` | 操作の監査履歴追加 | `sa_activity_log` |
-| FN-10 | `storeAttachmentInDrive_` | Driveへ安全に保存・メタデータ照合 | Drive、`sa_attachments` |
+| FN-10 | `storeAttachmentInDrive_` | 営業所の保存先配下の依頼別フォルダ（FN-19）へ安全に保存・メタデータ照合。共有範囲が広すぎる場合は保存しない | Drive、`sa_attachments` |
 | FN-11 | `enqueueNotification_` | 送信対象イベント登録（営業1人ずつの1対1チャットのWebhook通知。文面は送るたびに、依頼名・得意先名・SA名・質問や回答の要旨・SL-02を開くリンクを入れる） | `sa_notifications` |
 | FN-12 | `deliverPendingNotifications_` | 営業1人ずつの1対1チャットに置いたGoogle Chat Webhook（表示名「SA依頼」）へ、その営業にだけ送信し、再試行・状態記録を行う。送り先はスクリプトプロパティ SA_CHAT_WEBHOOK_<営業のuser_key>。未設定の営業への通知は `failed` として記録し、投稿は保存する。全員向けの部屋への通知は行わない。配送結果で依頼状態を変えない | `sa_notifications` |
 | FN-13 | `readThreadCursor_` | 未読位置の参照・更新 | `sa_read_cursors`候補 |
 | FN-14 | `recordImportOutcome_` | 取込結果・失敗・再試行経過 | `sa_import_log`候補 |
 | FN-15 | `extractSaRequestFields_` | OpenAI APIで5項目を抽出してsa_requestsの正式列へ保存。抽出不可はnull、状態pending/complete/needs_review/failed。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。本物の依頼文の送信は1件ずつユーザー許可を得る。 | sa_requests抽出5列・原文・状態 |
+| FN-16 | `parseDriveFolderUrl_` | 入力されたURLからDriveフォルダIDを取り出し、形式を検査する（フォルダ以外のURL・不正な文字は拒否） | なし（入力検証） |
+| FN-17 | `readBranchStorageSetting_` | 営業所の現在の保存先設定（最新の版）を取得する | `sa_branch_settings` |
+| FN-18 | `verifyDriveFolderWritable_` | 保存先の中に確認用の一時フォルダを作って削除し、フォルダの存在と書込可否を確認する。共有設定は変更しない | Drive |
+| FN-19 | `resolveRequestFolder_` | 依頼の依頼別フォルダを返す。無ければロック下で、保存先配下の同名フォルダの有無を検索し、なければ作成して`sa_request_folders`へ登録する（重複作成の防止） | `sa_branch_settings`、`sa_request_folders`、Drive |
 
 上記は論理責務を整理する仮の関数名。取込は5分ごとの時間主導トリガーで起動する。GASの`doGet`の`view`による具体的振り分け、関数ファイル分割、公開操作許可リストは実装時に確定。内部関数はクライアントに直接公開しない。
 
@@ -144,7 +155,7 @@
 ### 5.4 成果物・完了（FR-12/13）
 
 1. SA本人と依頼の更新権限を検査。
-2. ファイルの検証とDrive保存を行い、成功したファイル参照だけを`sa_attachments`へ記録。
+2. ファイルの検証を行い、依頼別フォルダ（FN-19。無ければ自動作成）へDrive保存し、成功したファイル参照だけを`sa_attachments`へ記録。
 3. 完了時、完了コメントを確認。添付0件でも完了可能とし、添付がある場合だけ返却対象添付の存在と権限を確認。
 4. 依頼を「完了」へ更新して履歴追記、営業宛通知キュー登録。
 5. 添付保存／依頼更新／通知に不整合が生じた場合は誤って完了扱いしないよう、復旧手段を定義する。
@@ -163,6 +174,7 @@
 | メッセージ投稿 | 自分の依頼に回答・投稿 | 所属内の依頼へ投稿 | 不可 |
 | 添付登録 | 初期対象外 | 可 | 不可 |
 | 添付参照 | 自分の依頼に返却された成果物（本人識別・権限再確認） | 同一所属内で許可された成果物 | 他人の返却資料・他営業所は不可 |
+| 保存先設定の参照・変更 | 不可 | 可（所属営業所の設定のみ） | 他営業所の設定は参照・変更とも不可 |
 | 操作履歴 | 開示範囲未確定 | 許可された依頼の必要項目 | 不可 |
 | 通知キュー直接操作 | 不可 | 不可（内部処理） | 不可 |
 
@@ -173,6 +185,8 @@
 - `sa_requests`：API-02〜07/11/13/15、FN-02/05〜07。担当・進捗は最新行の更新前提条件を検査。
 - `sa_messages`：API-03/07、FN-08。原則追加、既存発言を削除・差替えしない。
 - `sa_attachments`：API-09/10/11、FN-10。DriveファイルIDは公開無認証URLではない。
+- `sa_branch_settings`：API-16/17、FN-17/19。追記型で、営業所ごとに最新の版が現在の設定。
+- `sa_request_folders`：API-09、FN-19。1依頼1行。
 - `sa_activity_log`：API-12、FN-09。監査ログの追記が必要。
 - `sa_notifications`：FN-11/12。送信状態は依頼状態と別管理。
 - `sa_read_cursors`：API-08/14、FN-13。本人別の既読と表示順を管理し、他者設定と分離。
@@ -211,7 +225,7 @@ DB側の状態コード候補：`unassigned`→`in_progress`→`waiting_sales`�
 
 1. 確定済み（工程00）：元DBの「SA依頼｜」と`record_id`の列を確認し、読取はSheets API読み取り専用。取込は`record_id`を鍵に5分ごとの時間主導トリガー。
 2. 確定済み：画面はGAS内（`google.script.run`）。公開は「実行＝デプロイ者、アクセス＝組織内」。本人確認は営業AIと同じ`user_master`照合。
-3. API-01〜15の論理入出力は本文で定義済み。通信方式・ページング上限・ファイル分割の実装検証は未実施。
+3. API-01〜17の論理入出力は本文で定義済み。通信方式・ページング上限・ファイル分割の実装検証は未実施。
 4. 排他・ロック・冪等キーと複数Sheet更新時の復旧方式。
 5. 既読と本人別順序はsa_read_cursorsに保存。既投稿は上書き・削除せず同一スレッドに訂正追記する。
 6. Driveアップロード・ダウンロードの方式、形式・容量・アクセス権。

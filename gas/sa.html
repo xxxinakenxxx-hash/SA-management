@@ -184,6 +184,7 @@
       <span class="chip" id="branchChip"></span>
       <span class="bellwrap"><button class="btn small" id="bellBtn" type="button" aria-label="新着・未読" aria-expanded="false">🔔 新着<span id="bellN" class="bn hidden"></span></button>
         <div id="pop" class="pop hidden" role="dialog" aria-label="新着・未読"></div></span>
+      <button class="btn small" id="storageBtn" type="button">保存先設定</button>
       <button class="btn small" id="reloadBtn" type="button">最新に更新</button>
     </header>
     <div id="banner" class="banner hidden" role="alert"></div>
@@ -370,6 +371,7 @@
     $('fDue').addEventListener('change', function () { S.f.dueFilter = this.value; refreshList(true); });
     $('clearBtn').addEventListener('click', function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: false }); });
     $('reloadBtn').addEventListener('click', function () { hideBanner(); reloadAll(); });
+    $('storageBtn').addEventListener('click', function () { storageDialog(); });
     $('bellBtn').addEventListener('click', function (ev) { ev.stopPropagation(); S.popOpen = !S.popOpen; renderBell(); });
     document.addEventListener('click', function (ev) { if (S.popOpen && !$('pop').contains(ev.target)) { S.popOpen = false; renderBell(); } });
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && S.popOpen) { S.popOpen = false; renderBell(); } });
@@ -796,6 +798,48 @@
     openModal('完了を登録しますか？', [summary(), el('div', { class: 'field' }, [el('label', { for: 'doneText', text: '完了コメント' }), cm]), list, err,
       el('p', { class: 'unconfirmed', text: '完了すると、営業に完了のお知らせが送られます（送れなくても、完了の保存は取り消されません）。完了のあとも「対応を再開する」で戻せます。' })],
       [el('button', { class: 'btn', type: 'button', text: 'キャンセル', onclick: closeModal }), go]);
+  }
+  /* ---------- SA-05 営業所の保存先設定（SA-01内のダイアログ） ---------- */
+  function storageDialog() {
+    var cop = opId(), cur = { settingVersion: 0 }, busy = false;
+    var info = el('div', { class: 'unconfirmed', id: 'stInfo', text: '現在の設定を読み込み中…' });
+    var input = el('input', { id: 'stUrl', type: 'text', maxlength: '500', placeholder: 'https://drive.google.com/drive/folders/…', autocomplete: 'off' });
+    var err = el('div', { class: 'err hidden', id: 'stErr' });
+    var go = el('button', { class: 'btn primary', type: 'button', id: 'stGo', text: '保存', disabled: true, onclick: save });
+    function show(msg) { err.textContent = msg; err.classList.remove('hidden'); }
+    function showInfo(d) {
+      clear(info);
+      if (!d.configured) { info.appendChild(document.createTextNode('保存先は、まだ設定されていません。')); return; }
+      info.appendChild(document.createTextNode('現在の保存先：'));
+      info.appendChild(el('a', { href: d.folderUrl, target: '_blank', rel: 'noopener', id: 'stLink', text: 'フォルダを開く' }));
+      info.appendChild(document.createTextNode('　設定者：' + (d.setByName || '') + '　' + fmtTime(d.setAt)));
+    }
+    function load() {
+      return api('getBranchStorageSetting', {}).then(function (res) {
+        if (!res.success) { closeModal(); if (!handleFail(res)) showBanner('err', firstErr(res)); return; }
+        cur = res.data; showInfo(cur); go.disabled = false;
+      });
+    }
+    function save() {
+      var url = input.value.trim();
+      if (!url) { show('保存先フォルダのURLを入力してください。'); return; }
+      if (busy) return;
+      busy = true; go.disabled = true; go.textContent = '確認して保存中…'; err.classList.add('hidden');
+      api('saveBranchStorageSetting', { folderUrl: url, expectedSettingVersion: cur.settingVersion, clientOperationId: cop }).then(function (res) {
+        busy = false; go.textContent = '保存'; go.disabled = false;
+        if (res.success) { closeModal(); hideBanner(); toast(res.data.unchanged ? 'すでに、この保存先に設定されています' : '保存先を設定しました'); return; }
+        var code = res.error && res.error.code;
+        if (code === 'CONFLICT') { show('他の人が先に保存先を変更しました。最新の設定を読み込み直しました。内容を確認して、もう一度保存してください。'); cop = opId(); go.disabled = true; load(); return; }
+        if (code === 'VALIDATION_ERROR' || code === 'STORAGE_ERROR') { show(firstErr(res)); return; }
+        closeModal(); if (!handleFail(res)) showBanner('err', firstErr(res));
+      });
+    }
+    input.addEventListener('input', function () { err.classList.add('hidden'); });
+    openModal('保存先設定（Googleドライブ）', [info,
+      el('div', { class: 'field' }, [el('label', { for: 'stUrl', text: '保存先フォルダのURL' }), input]), err,
+      el('p', { class: 'unconfirmed', text: 'このフォルダの中に、依頼ごとのフォルダ（依頼ID）を自動で作って、成果物を保存します。フォルダの共有設定は変更しません。保存先を変えても、すでに保存した成果物は、そのまま取得できます。' })],
+      [el('button', { class: 'btn', type: 'button', text: '閉じる', onclick: closeModal }), go]);
+    load();
   }
   function dueDialog() {
     var d = S.detail.due;
