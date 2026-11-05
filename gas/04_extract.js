@@ -143,14 +143,28 @@ function normalizeFieldText_(v) {
   return t === null || isGenericWord_(t) ? null : t;
 }
 
+// 依頼の種類は、依頼文に書かれた言葉のときだけ使う（正本：不明な情報は推測補完しない）。
+// 空白と全角半角の違いを除いて、依頼文に含まれなければ null（内容から作った種類名を捨てる）。
+function requestTypeInText_(type, originalText) {
+  if (type === null) return null;
+  var norm = function (v) { return String(v == null ? '' : v).normalize('NFKC').replace(/[\s\u3000]/g, ''); };
+  return norm(originalText).indexOf(norm(type)) >= 0 ? type : null;
+}
+
+// 決まっていることが「〜の」で終わる言葉の断片（例：「試験用の」）なら、条件として成り立たないので null にする。
+function fixedConditionsOrNull_(v) {
+  if (v === null) return null;
+  return /の$/.test(String(v).replace(/[\s\u3000。、．，.,]+$/, '')) ? null : v;
+}
+
 function buildExtractionPayload_(input, model) {
   var system = 'あなたは、営業から営業支援担当（SA）への依頼文を整理する。依頼文から次の項目を取り出す。' +
     '依頼文に書かれていない項目は推測せず、文字列の "null" ではなく JSON の null にする。' +
     '「SA」「SAさん」「担当者」「依頼」「SA依頼」のような、依頼文に固有の中身がない一般語は、どの項目にも値として入れない（その場合は null）。' +
     'recipient=誰に：依頼文に書かれた具体的な相手（人名・部署名・取引先名など）だけ。依頼先がSAであることは自明なので入れない。書かれていなければ null。' +
     'action=何を：依頼で作る・用意する・行う対象と、その内容を限定する言葉（何の・何機種・何件・何との比較か・「〜つき」「〜向け」など）を、依頼文の言葉のまま省略せずに入れる。同じ対象について依頼文の複数の文に分かれて書かれているときは、1つにまとめる。依頼文に書かれていない言葉は足さない。' +
-    'request_type=依頼の種類：「見積」「資料作成」「サンプル手配」のように、依頼の種類が依頼文に明示されている場合だけ。内容から種類名を推測して作らない。明示されていなければ null。' +
-    'fixed_conditions=決まっていること：依頼文に明記された条件・仕様・数量などだけ。なければ null。' +
+    'request_type=依頼の種類：「見積」「資料作成」「サンプル手配」のように、依頼の種類が依頼文に明示されている場合だけ。内容から種類名を推測して作らない。依頼文にその言葉が書かれていなければ null。' +
+    'fixed_conditions=決まっていること：依頼文に明記された条件・仕様・数量などだけ。意味の通る条件として書かれたものに限り、相手や得意先を説明する語（「〇〇向けの」「試験用の」など）や言葉の断片は入れない。なければ null。' +
     'due_text=いつまで：期限の表現を原文のまま。なければ null。' +
     '期限の日付そのものは返さない（日付は別の処理が計算する）。期限の表現を次の区分で答える。' +
     'due_kind：「来週の金曜日」「今週の水曜」「再来週の月曜」のように週と曜日で指定された期限は week_weekday（due_week_offset：今週=0、来週=1、再来週=2。due_weekday：月・火・水・木・金・土・日のいずれか1文字）。' +
@@ -200,8 +214,8 @@ function extractFieldsFromText_(input, options) {
   var fields = {
     recipient: normalizeFieldText_(parsed.recipient),
     action: normalizeFieldText_(parsed.action),
-    requestType: normalizeFieldText_(parsed.request_type),
-    fixedConditions: normalizeFieldText_(parsed.fixed_conditions),
+    requestType: requestTypeInText_(normalizeFieldText_(parsed.request_type), input.originalText),
+    fixedConditions: fixedConditionsOrNull_(normalizeFieldText_(parsed.fixed_conditions)),
     dueText: dueText,
     dueDate: due,
     dueUrgent: parsed.due_urgent === true
