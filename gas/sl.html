@@ -195,7 +195,14 @@
     var box = $('cards'); clear(box);
     $('count').textContent = S.listBusy && !S.items.length ? '読み込み中です…' : S.total + '件';
     if (S.listBusy && !S.items.length) { box.appendChild(el('div', { class: 'empty', text: '読み込み中です…' })); return; }
-    if (!S.items.length) { box.appendChild(el('div', { class: 'empty' }, [el('b', { text: '該当する依頼はありません' }), document.createTextNode('SA依頼は、営業AIメモから登録すると、ここに表示されます。')])); return; }
+    if (!S.items.length) {
+      if (S.f.unread || S.f.mine) {
+        box.appendChild(el('div', { class: 'empty' }, [el('b', { text: S.f.unread ? '未読の依頼はありません' : '自分の依頼はありません' }), document.createTextNode(S.f.unread ? 'SAからの未読の発言がある依頼は、ありません。自分が投稿した発言は未読に数えません。' : '自分が登録した依頼は、ありません。'), el('button', { class: 'btn small', type: 'button', text: 'すべて表示', onclick: function () { S.f.mine = false; S.f.unread = false; loadList(); } })]));
+      } else {
+        box.appendChild(el('div', { class: 'empty' }, [el('b', { text: '該当する依頼はありません' }), document.createTextNode('SA依頼は、営業AIメモから登録すると、ここに表示されます。')]));
+      }
+      return;
+    }
     var me = S.profile ? S.profile.userId.toLowerCase() : '';
     S.items.forEach(function (it) {
       var mineReq = it.salesUserId && it.salesUserId.toLowerCase() === me;
