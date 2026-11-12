@@ -161,10 +161,10 @@ function buildExtractionPayload_(input, model) {
   var system = 'あなたは、営業から営業支援担当（SA）への依頼文を整理する。依頼文から次の項目を取り出す。' +
     '依頼文に書かれていない項目は推測せず、文字列の "null" ではなく JSON の null にする。' +
     '「SA」「SAさん」「担当者」「依頼」「SA依頼」のような、依頼文に固有の中身がない一般語は、どの項目にも値として入れない（その場合は null）。' +
-    'recipient=誰に：依頼文に書かれた具体的な相手（人名・部署名・取引先名など）だけ。依頼先がSAであることは自明なので入れない。書かれていなければ null。' +
+    'recipient=誰に：依頼文に書かれた具体的な相手（人名・部署名・取引先名など）だけ。依頼先がSAであることは自明なので入れない。見積や比較・資料の対象になっている会社・商品・機種（「A社とB社」「メーカー2社」「商品Aと商品B」など）は、依頼を渡す相手ではないので入れない。依頼の担当者・窓口・作成者として名前が書かれているだけの人（「担当は〇〇さんです」など）も、成果物を渡す相手ではないので入れない。recipient は、成果物を渡す・見せる・送る相手（店長さん、「〇〇さんに渡す」の〇〇さん、各支店など）が依頼文に書かれているときだけ入れる。書かれていなければ null。' +
     'action=何を：依頼で作る・用意する・行う対象と、その内容を限定する言葉（何の・何機種・何件・何との比較か・「〜つき」「〜向け」など）を、依頼文の言葉のまま省略せずに入れる。同じ対象について依頼文の複数の文に分かれて書かれているときは、1つにまとめる。依頼文に書かれていない言葉は足さない。' +
     'request_type=依頼の種類：「見積」「資料作成」「サンプル手配」のように、依頼の種類が依頼文に明示されている場合だけ。内容から種類名を推測して作らない。依頼文にその言葉が書かれていなければ null。' +
-    'fixed_conditions=決まっていること：依頼文に明記された条件・仕様・数量などだけ。意味の通る条件として書かれたものに限り、相手や得意先を説明する語（「〇〇向けの」「試験用の」など）や言葉の断片は入れない。なければ null。' +
+    'fixed_conditions=決まっていること：依頼文に明記された条件・仕様・数量・形式・サイズ・比較や記載する項目・価格や金額の扱いなどを、1つも省略せず、依頼文の言葉のまま「。」でつないで列挙する（「比べる項目は〇〇」「内容量は△△」のように書かれた条件も入れる）。ただし、依頼する対象そのもの（action に入れたもの）、相手や得意先を説明する語（「〇〇向けの」「試験用の」など）、依頼の種類、期限、動作確認や試験であることの断り書き、言葉の断片は入れない。「試験用の」「〇〇向けの」のように、後ろの語につながるだけで、それだけでは条件として意味が通らない言葉や、依頼する対象（提案書・価格表など）を言い換えただけの語句は入れない。店名・得意先名に「向け」がついただけの語句（例：「試験用の「テストカフェ」向けに」）は、条件ではないので入れない。「〇〇向けの仕様・サイズ・内容」のように、向け先に応じた具体的な内容が書かれているときだけ、その内容を入れる。依頼文に書かれていない条件は足さない。なければ null。' +
     'due_text=いつまで：期限の表現を原文のまま。なければ null。' +
     '期限の日付そのものは返さない（日付は別の処理が計算する）。期限の表現を次の区分で答える。' +
     'due_kind：「来週の金曜日」「今週の水曜」「再来週の月曜」のように週と曜日で指定された期限は week_weekday（due_week_offset：今週=0、来週=1、再来週=2。due_weekday：月・火・水・木・金・土・日のいずれか1文字）。' +
@@ -290,7 +290,9 @@ function extractSaRequestFields_(requestId) {
 }
 
 // 抽出状態が pending の依頼を、古い順に最大 limit 件処理する（定期実行から呼ぶ）。
-function extractPendingRequests_(limit) {
+// branchName を渡したときは、その営業所の依頼だけを処理する（定期取込の対象営業所以外の依頼を、勝手にAIへ送らない）。省略すると全営業所。
+function extractPendingRequests_(limit, branchName) {
+  var onlyBranch = branchName == null ? '' : String(branchName).trim();
   var sh = getTable_('sa_requests');
   var last = sh.getLastRow();
   var summary = { processed: 0, complete: 0, needs_review: 0, failed: 0, skipped: 0 };
@@ -300,6 +302,7 @@ function extractPendingRequests_(limit) {
   var max = limit || 10;
   for (var i = 0; i < values.length && summary.processed < max; i++) {
     if (String(values[i][idx.extraction_status]) !== 'pending') continue;
+    if (onlyBranch && String(values[i][idx.branch_id]).trim() !== onlyBranch) continue;
     var r = extractSaRequestFields_(values[i][idx.request_id]);
     if (r.skipped) { summary.skipped++; continue; }
     summary.processed++;
