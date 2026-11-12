@@ -290,7 +290,9 @@ function extractSaRequestFields_(requestId) {
 }
 
 // 抽出状態が pending の依頼を、古い順に最大 limit 件処理する（定期実行から呼ぶ）。
-function extractPendingRequests_(limit) {
+// branchName を渡したときは、その営業所の依頼だけを処理する（定期取込の対象営業所以外の依頼を、勝手にAIへ送らない）。省略すると全営業所。
+function extractPendingRequests_(limit, branchName) {
+  var onlyBranch = branchName == null ? '' : String(branchName).trim();
   var sh = getTable_('sa_requests');
   var last = sh.getLastRow();
   var summary = { processed: 0, complete: 0, needs_review: 0, failed: 0, skipped: 0 };
@@ -300,6 +302,7 @@ function extractPendingRequests_(limit) {
   var max = limit || 10;
   for (var i = 0; i < values.length && summary.processed < max; i++) {
     if (String(values[i][idx.extraction_status]) !== 'pending') continue;
+    if (onlyBranch && String(values[i][idx.branch_id]).trim() !== onlyBranch) continue;
     var r = extractSaRequestFields_(values[i][idx.request_id]);
     if (r.skipped) { summary.skipped++; continue; }
     summary.processed++;

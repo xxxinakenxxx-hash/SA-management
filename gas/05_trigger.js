@@ -5,7 +5,7 @@
 // トリガーから呼ばれる処理：対象営業所の取込 → 抽出状態が pending の依頼の抽出。
 function runScheduledImport() {
   var imported = importSaRequests_(getImportBranch_());
-  var extracted = extractPendingRequests_(10);
+  var extracted = extractPendingRequests_(10, getImportBranch_());
   return { imported: imported, extracted: extracted };
 }
 
