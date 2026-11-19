@@ -58,6 +58,8 @@
   .btn.danger { color:var(--bad); border-color:#f0c8c3; }
   .btn.small { padding:3px 9px; font-size:12px; }
   a.btn { display:inline-block; text-decoration:none; white-space:nowrap; }
+  .btn.accent { background:#0f8a7e; border-color:#0f8a7e; color:#fff; }
+  .btn.accent:hover { background:#0c7369; border-color:#0c7369; }
   .btn[aria-pressed="true"] { background:var(--primary-weak); border-color:#c9d6fa; color:#233a85; font-weight:600; }
 
   .banner { margin:10px 18px 0; padding:10px 14px; border-radius:var(--radius); display:flex; gap:12px; align-items:center; border:1px solid; }
@@ -199,6 +201,7 @@
       <span class="bellwrap"><button class="btn small" id="bellBtn" type="button" aria-label="新着・未読" aria-expanded="false">🔔 新着<span id="bellN" class="bn hidden"></span></button>
         <div id="pop" class="pop hidden" role="dialog" aria-label="新着・未読"></div></span>
       <span class="busymsg hidden" id="busyMsg" role="status" aria-live="polite"></span>
+      <a class="btn small accent" id="productSearchLink" href="https://script.google.com/macros/s/AKfycbx560I3oBT7gz06jrkb1zQJB2uTRbEDT8v70eJ9o12J_zzbwAxjuNjxGWXzzlSKPKP92A/exec" target="_blank" rel="noopener">商品検索AI</a>
       <a class="btn small" id="feedbackLink" href="https://script.google.com/a/macros/marubishi-group.co.jp/s/AKfycbzjuy5sRg9508tMq2EY2_LJfwe8Vky4HQlITv6xkeACfU_cQHIETRNTrfgLsicvsIA/exec?view=feedback" target="_blank" rel="noopener">改善・不具合を報告する</a>
       <button class="btn small" id="storageBtn" type="button">保存先設定</button>
       <button class="btn small" id="reloadBtn" type="button">最新に更新</button>
