@@ -13,7 +13,7 @@
 | `docs/正本/` | 6文書が存在（概要企画書・要件定義書・技術設計書・DB設計書・API・内部関数設計書・画面設計書） |
 | 基本設計・計画 | `docs/計画/`（開発工程表・未確定事項確認書）、`docs/実装指示書/`（工程00〜05の6本）、`docs/記録/`（工程00_技術検証記録）が存在 |
 | 業務機能実装 | 工程00：完了判定済み（CHAT_CURRENT 2026-10-28）／工程01：完了判定済み（同 2026-10-29）／工程02：実施・管理側が照合済み（PR #17・#18、得意先名の取込。「完了」の判定記録は、今回確認した範囲では未確認）／**工程03：条件付き完了**（T6合格、T7主要項目合格、未確認2点）／工程04：追加改修を実施・本番反映済み／工程05：本番@67で通し試験合格・条件付き完了 |
-| 本番GAS（反映先） | スクリプトID `1Pz-FzPPSFaQTOImIOyD-Dy2leZq7vymo6nnelDqvuGs1BjtttML4C-U_`（SA管理スプレッドシートに付いたGAS。`clasp list` には出ない）。本番公開ID `AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0`（現在 @74、2026-11-19更新）。反映手順：作業用フォルダで `clasp clone <スクリプトID>` → main の `gas/` と全ファイル照合 → `clasp push --force` → `clasp create-deployment -i <本番公開ID>`（既存の本番公開を新しい版へ。新規公開は作らない）→ 版を取り直して照合 → `clasp logout`。この作業環境から `script.google.com` の画面は開けないため、本番の確認は公開一覧と版の中身の照合で行う |
+| 本番GAS（反映先） | スクリプトID `1Pz-FzPPSFaQTOImIOyD-Dy2leZq7vymo6nnelDqvuGs1BjtttML4C-U_`（SA管理スプレッドシートに付いたGAS。`clasp list` には出ない）。本番公開ID `AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0`（現在 @75、2026-11-19更新）。反映手順：作業用フォルダで `clasp clone <スクリプトID>` → main の `gas/` と全ファイル照合 → `clasp push --force` → `clasp create-deployment -i <本番公開ID>`（既存の本番公開を新しい版へ。新規公開は作らない）→ 版を取り直して照合 → `clasp logout`。この作業環境から `script.google.com` の画面は開けないため、本番の確認は公開一覧と版の中身の照合で行う |
 
 以下の「変更履歴」は、作業時点の記録をそのまま残す。当時の「未作成」「未着手」「未実施」「削除する予定」などの記述は、その時点の事実であり、現在の状態は上の表と末尾の最新日付の記録を参照する。
 
@@ -1066,3 +1066,13 @@ C6の仕様判断（管理側）。工程05全体の完了判定は指示監督�
 ### 2026-11-19：営業の写真添付の問い合わせ（実装側：Claude Code）
 
 - 利用者の判断により、当面は現状どおり（写真はChatでやり取り）とし、SA管理・営業AIメモは変更しない。やり方は利用者が引き続き検討する（未決。経緯は `tasks/CHAT_CURRENT.md` の同日付の節）。コード・GAS・DBの変更なし。
+
+### 2026-11-19：SA画面に「商品検索AI」ボタンを追加・本番反映（実装側：Claude Code）
+
+- **指示（利用者、2026-11-19）**：SA画面の上に「商品検索AI」ボタンを作る。リンクは `https://script.google.com/macros/s/AKfycbx560I3oBT7gz06jrkb1zQJB2uTRbEDT8v70eJ9o12J_zzbwAxjuNjxGWXzzlSKPKP92A/exec`。目立つように色を付ける。大きくしない、字も太くしない。本番反映は利用者が明示的に許可。
+- **変更（`gas/sa.html` のみ、main `69badf9`）**：ヘッダーの「🔔 新着」と「改善・不具合を報告する」の間にリンクボタンを追加（新しいタブで開く、rel=noopener）。色は青緑（背景 `#0f8a7e`、白文字）。大きさ・文字の太さは他のボタンと同じ（12px・通常の太さ・高さ27px）。他の機能は変更なし。
+- **検査（作業環境のブラウザ）**：並び、色、大きさ・太さ、リンク先、新しいタブで開くこと、画面のエラー0件、構文確認（node --check）、`git diff --check` を確認。リンク先（商品検索AI）が会社アカウントで開けるかは未確認。
+- **GAS反映**：反映前のGAS（22ファイル）は main `0f0aac2` と一致。`clasp push --force`（`Pushed 22 files at 5:44:07 AM.`）。
+- **本番デプロイ更新**：既存の本番公開 `AKfycbxFOoDzJR…` を @74 → @75 に更新（新規公開なし。説明「商品検索AIボタン（main 69badf9）」）。@75 を読み直し、22ファイルすべて main と一致。戻し方：`clasp create-deployment -i AKfycbxFOoDzJR… -V 74`。
+- **未確認**：本番画面での表示。更新履歴シートへの追記（実装側は書き込めないため、追記する行の案を利用者に提示済み）。
+- **後片付け**：`clasp logout` 済み。
