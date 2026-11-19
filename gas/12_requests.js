@@ -1,4 +1,33 @@
 // FN-06 findRequestById_／FN-07 updateRequestWithVersion_：依頼行の取得と、版番号つきの更新。
+
+// アーカイブ用の2列（archived_at・archived_by。2026-11-19 利用者指示で追加）を、既存の sa_requests の末尾に足す。
+// 既にあれば何もしない。足すのは見出しと列だけで、既存の行・値には触れない。ロックを持つ前（API・定期実行の入口）で呼ぶ。
+var SA_ARCHIVE_COLS_PROP_ = 'SA_REQUESTS_ARCHIVE_COLS';
+function ensureRequestArchiveColumns_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(SA_ARCHIVE_COLS_PROP_) === '1') return;
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('LOCK_TIMEOUT');
+  try {
+    var sh = getTable_('sa_requests');
+    var header = saHeader_('sa_requests');
+    if (sh.getMaxColumns() < header.length) sh.insertColumnsAfter(sh.getMaxColumns(), header.length - sh.getMaxColumns());
+    var have = sh.getRange(1, 1, 1, header.length).getValues()[0].map(String);
+    for (var i = 0; i < header.length; i++) {
+      if (have[i] === header[i]) continue;
+      if (have[i] !== '' || (header[i] !== 'archived_at' && header[i] !== 'archived_by')) throw new Error('SCHEMA_MISMATCH:sa_requests');
+      sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@');
+      sh.getRange(1, i + 1).setValue(header[i]);
+    }
+    SpreadsheetApp.flush();
+    props.setProperty(SA_ARCHIVE_COLS_PROP_, '1');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function isArchivedRequest_(o) { return String((o && o.archived_at) || '') !== ''; }
+
 function requestObjectFromValues_(values) {
   var o = {};
   saHeader_('sa_requests').forEach(function (n, i) { o[n] = values[i]; });

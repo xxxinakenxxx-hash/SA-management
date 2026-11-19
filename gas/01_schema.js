@@ -11,7 +11,8 @@ var SA_SCHEMA_ = {
     ['sa_recipient', 'String'], ['sa_action', 'String'], ['sa_request_type', 'String'], ['sa_fixed_conditions', 'String'],
     ['sa_due_date_text', 'String'], ['sa_due_date', 'Date'], ['sa_due_urgent', 'Boolean'],
     ['sa_due_date_updated_by', 'String'], ['sa_due_date_updated_at', 'DateTime'], ['sa_note', 'String'],
-    ['extraction_status', 'String'], ['extracted_at', 'DateTime']
+    ['extraction_status', 'String'], ['extracted_at', 'DateTime'],
+    ['archived_at', 'DateTime'], ['archived_by', 'String']
   ],
   sa_messages: [
     ['message_id', 'String'], ['request_id', 'String'], ['sender_user_id', 'String'], ['sender_role', 'String'],

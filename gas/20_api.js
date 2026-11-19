@@ -20,6 +20,7 @@ function executeApi_(ctx, handler) {
 }
 
 function runApi_(handler, params) {
+  try { ensureRequestArchiveColumns_(); } catch (e) { return errorResponse_('STORAGE_ERROR', null, Utilities.getUuid()); }
   var ctx;
   try { ctx = resolveAuthenticatedUser_(); } catch (e) { return errorResponse_('STORAGE_ERROR', null, Utilities.getUuid()); }
   return executeApi_(applyActAs_(ctx, params), handler);
@@ -67,6 +68,7 @@ function toListItem_(o, names, cursor, thread) {
     receivedAt: String(o.source_recorded_at || o.created_at), createdAt: String(o.created_at),
     dueText: String(o.sa_due_date_text || ''), dueDate: String(o.sa_due_date || ''), dueUrgent: o.sa_due_urgent === true,
     extractionStatus: String(o.extraction_status), rowVersion: Number(o.row_version),
+    archived: isArchivedRequest_(o), archivedAt: String(o.archived_at || ''),
     myOrder: cursor && cursor.sortOrder !== null ? cursor.sortOrder : null, sortVersion: cursor ? cursor.sortVersion : null,
     messageCount: thread.messageCount || 0, lastMessageId: thread.lastMessageId || '', lastMessageAt: thread.lastMessageAt || '', unreadCount: thread.unreadCount || 0
   };
@@ -95,12 +97,16 @@ function handleListRequests_(ctx, params) {
   var ownerOnly = ctx.role === 'sales', reqOwner = {};
   readAllRequests_().forEach(function (r) { reqOwner[String(r.obj.request_id)] = String(r.obj.sales_user_id).toLowerCase(); });
   var threadInfo = function (id) { var t = threads[id] || []; var count = ownerOnly && reqOwner[id] !== String(ctx.userId).toLowerCase() ? 0 : unreadCountFor_(t, lastRead[id] || '', ctx.userId); return { messageCount: t.length, lastMessageId: t.length ? t[t.length - 1].id : '', lastMessageAt: t.length ? t[t.length - 1].at : '', unreadCount: count }; };
-  var mine = readAllRequests_().filter(function (r) { return String(r.obj.branch_id) === String(ctx.branch); });
-  var counts = { unassigned: 0, in_progress: 0, waiting_sales: 0, completed: 0, total: mine.length };
+  var branchRows = readAllRequests_().filter(function (r) { return String(r.obj.branch_id) === String(ctx.branch); });
+  // アーカイブした依頼は、件数と通常の一覧から外す。SAが「アーカイブ」を選んだときだけ、アーカイブした依頼を返す。
+  var archivedRows = branchRows.filter(function (r) { return isArchivedRequest_(r.obj); });
+  var mine = branchRows.filter(function (r) { return !isArchivedRequest_(r.obj); });
+  var counts = { unassigned: 0, in_progress: 0, waiting_sales: 0, completed: 0, total: mine.length, archived: ctx.role === 'sa' ? archivedRows.length : 0 };
   counts.unread = 0;
   mine.forEach(function (r) { if (counts[r.obj.status] !== undefined) counts[r.obj.status]++; if (threadInfo(String(r.obj.request_id)).unreadCount > 0) counts.unread++; });
   var today = todayJst_(), in3 = addDaysIso_(today, 3), me = String(ctx.userId).toLowerCase(), kw = v.keyword.toLowerCase();
-  var items = mine.map(function (r) { return { o: r.obj, item: toListItem_(r.obj, names, cursors[String(r.obj.request_id)], threadInfo(String(r.obj.request_id))) }; }).filter(function (x) {
+  var listRows = ctx.role === 'sa' && v.archivedOnly ? archivedRows : mine;
+  var items = listRows.map(function (r) { return { o: r.obj, item: toListItem_(r.obj, names, cursors[String(r.obj.request_id)], threadInfo(String(r.obj.request_id))) }; }).filter(function (x) {
     var o = x.o, it = x.item;
     if (v.unreadOnly && it.unreadCount < 1) return false;
     if (v.status.length && v.status.indexOf(it.status) < 0) return false;
@@ -187,11 +193,13 @@ function handleGetRequestDetail_(ctx, params) {
       canClaim: isSa && String(o.status) === 'unassigned' && !String(o.assigned_sa_user_id || ''),
       canReassign: isSa && !!String(o.assigned_sa_user_id || ''),
       statusTargets: isSa ? allowedStatusTargets_(o).filter(function (t) { return t !== 'in_progress' || String(o.status) !== 'completed' || !!String(o.assigned_sa_user_id || ''); }) : [],
+      canArchive: isSa && !isArchivedRequest_(o), canUnarchive: isSa && isArchivedRequest_(o),
       canEditNote: isSa, canEditDue: isSa, canAttach: isSa, canComplete: isSa && (String(o.status) === 'in_progress' || String(o.status) === 'waiting_sales'),
       postTypes: isSa ? ['question', 'normal'] : (isOwner ? ['sales_reply'] : []), canCorrect: isSa || isOwner
     }
   };
   if (isSa) data.saNote = String(o.sa_note || '');
+  if (isSa && isArchivedRequest_(o)) data.archive = { at: String(o.archived_at), byName: displayName_(names, o.archived_by) };
   return data;
 }
 function getRequestDetail(params) { return runApi_(function (ctx) { return handleGetRequestDetail_(ctx, params); }, params); }
@@ -286,6 +294,21 @@ function handleUpdateSaNote_(ctx, params) {
   });
 }
 function updateSaNote(params) { return runApi_(function (ctx) { return handleUpdateSaNote_(ctx, params); }, params); }
+
+// ---- アーカイブ（2026-11-19 利用者指示で追加。SA全員が実行でき、いつでも戻せる。行は消さない）----
+function handleArchiveRequest_(ctx, params) {
+  requireSa_(ctx);
+  var v = parseInput_('archiveRequest', params);
+  return runRequestWrite_(ctx, 'archiveRequest', v, {
+    eventType: v.archive ? 'archived' : 'unarchived',
+    apply: function (o) {
+      if (v.archive === isArchivedRequest_(o)) throw saError_('CONFLICT', { reason: v.archive ? 'already_archived' : 'not_archived' });
+      return v.archive ? { archived_at: nowIso_(), archived_by: ctx.userId } : { archived_at: '', archived_by: '' };
+    },
+    describe: function () { return { before: '', after: '' }; }
+  });
+}
+function archiveRequest(params) { return runApi_(function (ctx) { return handleArchiveRequest_(ctx, params); }, params); }
 
 // ---- API-15 correctRequestDueDate（元の依頼文 source_original_text は変更しない）----
 function handleCorrectRequestDueDate_(ctx, params) {
@@ -420,7 +443,7 @@ function handleMarkThreadRead_(ctx, params) {
 function markThreadRead(params) { return runApi_(function (ctx) { return handleMarkThreadRead_(ctx, params); }, params); }
 
 // ---- API-12 getActivityHistory（営業には公開対象の種類だけ）----
-var SA_EVENT_LABELS_ = { claimed: '担当を引き受け', reassigned: '担当を変更', status_changed: '状態を変更', note_updated: '備考を更新', due_corrected: '期限を訂正', order_changed: '並び順を保存',
+var SA_EVENT_LABELS_ = { claimed: '担当を引き受け', reassigned: '担当を変更', status_changed: '状態を変更', note_updated: '備考を更新', due_corrected: '期限を訂正', order_changed: '並び順を保存', archived: 'アーカイブ', unarchived: 'アーカイブから戻す',
   message_question: '質問を投稿', message_normal: '投稿', message_sales_reply: '営業が返信', message_correction: '訂正を追記',
   attachment_registered: '成果物を登録', attachment_orphan: '成果物の保存を取り消し', completed: '完了を登録' };
 var SA_SALES_VISIBLE_EVENTS_ = ['claimed', 'reassigned', 'status_changed', 'completed'];

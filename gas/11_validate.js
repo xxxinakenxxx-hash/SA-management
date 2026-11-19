@@ -48,6 +48,11 @@ function validateRequestInput_(operation, params) {
       needRequestId(); needOpId(); needVersion(true);
       if (SA_STATUS_CODES_.indexOf(p.newStatus) < 0) bad('newStatus', '状態の指定が正しくありません。'); else values.newStatus = p.newStatus;
       break;
+    case 'archiveRequest': {
+      needRequestId(); needOpId(); needVersion(true);
+      if (typeof p.archive !== 'boolean') bad('archive', 'アーカイブするか戻すかを指定してください。'); else values.archive = p.archive;
+      break;
+    }
     case 'updateSaNote': {
       needRequestId(); needOpId(); needVersion(true);
       if (typeof p.saNote !== 'string' || p.saNote.length > 2000) bad('saNote', '備考は2000文字以内で入力してください。'); else values.saNote = p.saNote;
@@ -155,6 +160,7 @@ function validateRequestInput_(operation, params) {
       if (typeof kw !== 'string' || kw.length > 100) bad('keyword', '検索語は100文字以内で入力してください。'); else values.keyword = kw.trim();
       values.mineOnly = p.mineOnly === true;
       values.unreadOnly = p.unreadOnly === true;
+      values.archivedOnly = p.archivedOnly === true;
       var pageNo = p.page === undefined ? 1 : p.page, size = p.pageSize === undefined ? 100 : p.pageSize;
       if (!isInt_(pageNo) || pageNo < 1) bad('page', 'ページ番号が正しくありません。'); else values.page = pageNo;
       if (!isInt_(size) || size < 1 || size > 200) bad('pageSize', '1ページの件数は1〜200です。'); else values.pageSize = size;

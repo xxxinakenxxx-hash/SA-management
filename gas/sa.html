@@ -102,6 +102,8 @@
   .card-item .due { margin-top:6px; font-size:12px; display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; }
   .mover { display:flex; flex-direction:column; justify-content:center; padding-right:8px; gap:2px; }
   .mover button { border:1px solid var(--line); background:#fff; border-radius:6px; line-height:1; padding:2px 6px; font-size:11px; color:var(--sub); }
+  .badge.archived { background:#e6e8ee; color:#5d6778; }
+  .archived-note { margin:6px 0 2px; padding:6px 10px; border-radius:8px; background:#eef0f4; color:#4a5468; font-size:12px; }
   .badge { display:inline-block; padding:0 9px; border-radius:999px; font-size:12px; font-weight:600; line-height:20px; white-space:nowrap; }
   .st-unassigned { background:var(--gray-weak); color:#475066; }
   .st-in_progress { background:var(--primary-weak); color:#233a85; }
@@ -213,7 +215,7 @@
         <div class="hd">
           <h2>依頼一覧</h2>
           <div class="filters">
-            <select id="fStatus" aria-label="状態"><option value="">状態：すべて</option><option value="unassigned">未担当</option><option value="in_progress">対応中</option><option value="waiting_sales">営業回答待ち</option><option value="completed">完了</option></select>
+            <select id="fStatus" aria-label="状態"><option value="">状態：すべて</option><option value="unassigned">未担当</option><option value="in_progress">対応中</option><option value="waiting_sales">営業回答待ち</option><option value="completed">完了</option><option value="archived">アーカイブ</option></select>
             <select id="fAssignee" aria-label="担当者"></select>
             <select id="fDue" aria-label="期限"><option value="">期限：すべて</option><option value="overdue">期限超過</option><option value="today">本日</option><option value="within3">3日以内</option><option value="urgent">急ぎ</option></select>
             <button class="btn small" id="clearBtn" type="button">条件をクリア</button>
@@ -266,7 +268,7 @@
 
   /* ---------- 処理中の表示（実際の通信の状態と連動する。通信が終わる・失敗すると消える） ---------- */
   var BUSY = { kinds: {} }, BUSY_TEXT = { send: '送信中です…', save: '保存中です…', update: '更新中です…', load: '読み込み中です…' }, BUSY_ORDER = ['send', 'save', 'update', 'load'];
-  var API_KIND = { postMessage: 'send', claimRequest: 'save', reassignRequest: 'save', changeRequestStatus: 'save', updateSaNote: 'save', correctRequestDueDate: 'save', saveMyRequestOrder: 'save',
+  var API_KIND = { postMessage: 'send', archiveRequest: 'save', claimRequest: 'save', reassignRequest: 'save', changeRequestStatus: 'save', updateSaNote: 'save', correctRequestDueDate: 'save', saveMyRequestOrder: 'save',
     saveBranchStorageSetting: 'save', registerAttachment: 'save', completeRequest: 'save', markThreadRead: 'quiet' };
   function busyShow() {
     var t = '', i; for (i = 0; i < BUSY_ORDER.length; i++) if (BUSY.kinds[BUSY_ORDER[i]] > 0) { t = BUSY_TEXT[BUSY_ORDER[i]]; break; }
@@ -436,6 +438,7 @@
 
   /* ---------- 一覧 ---------- */
   function listParams() {
+    if (S.f.status === 'archived') return { status: [], archivedOnly: true, assignee: S.f.assignee, dueFilter: S.f.dueFilter, keyword: S.f.keyword, unreadOnly: !!S.f.unread, page: 1, pageSize: 200 };
     return { status: S.f.status ? [S.f.status] : (S.hideDone ? OPEN_STATUSES.slice() : []), assignee: S.f.assignee, dueFilter: S.f.dueFilter, keyword: S.f.keyword, unreadOnly: !!S.f.unread, page: 1, pageSize: 200 };
   }
   function refreshList(resetOrder, kind) {
@@ -494,7 +497,7 @@
       var meta = el('div', { class: 'm' }, [kv('営業', it.salesUserName), it.customerName ? kv('得意先', it.customerName) : null, kv('担当', it.assignedName || '担当なし', !it.assignedName)]);
       var due = el('div', { class: 'due' }, [dueText(it) ? el('span', { class: it.dueUrgent && !it.dueDate ? 'badge urgent' : '', text: dueText(it) }) : el('span', { class: 'unconfirmed', text: '期限 未確認' }),
         it.extractionStatus === 'pending' ? el('span', { class: 'unconfirmed', text: 'AI構造化待ち' }) : null]);
-      var main = el('button', { class: 'main-btn', type: 'button', onclick: function () { select(it.requestId); } }, [el('div', { class: 'top1' }, [el('div', { class: 't', text: it.title }), el('span', { style: 'display:flex;gap:4px;align-items:center' }, [it.unreadCount > 0 ? el('span', { class: 'badge unread', text: '未読 ' + it.unreadCount }) : null, badge(it.status)])]), meta, due]);
+      var main = el('button', { class: 'main-btn', type: 'button', onclick: function () { select(it.requestId); } }, [el('div', { class: 'top1' }, [el('div', { class: 't', text: it.title }), el('span', { style: 'display:flex;gap:4px;align-items:center' }, [it.unreadCount > 0 ? el('span', { class: 'badge unread', text: '未読 ' + it.unreadCount }) : null, it.archived ? el('span', { class: 'badge archived', text: 'アーカイブ' }) : null, badge(it.status)])]), meta, due]);
       var row = el('div', { class: 'card-item' + (it.requestId === S.selectedId ? ' on' : '') }, [main]);
       if (canMove) row.appendChild(el('div', { class: 'mover' }, [
         el('button', { type: 'button', title: '上へ', 'aria-label': '上へ', text: '▲', disabled: i === 0, onclick: function () { move(i, -1); } }),
@@ -580,7 +583,10 @@
       act.appendChild(el('button', { class: 'btn' + (t === 'unassigned' ? ' danger' : ''), type: 'button', text: label, disabled: S.writeBusy, onclick: function () { changeStatus(t, label); } }));
     });
     if (a.canComplete) act.appendChild(el('button', { class: 'btn primary', type: 'button', id: 'completeBtn', text: '完了登録', disabled: S.writeBusy, onclick: function () { completeDialog(); } }));
+    if (a.canArchive) act.appendChild(el('button', { class: 'btn', type: 'button', id: 'archiveBtn', text: 'アーカイブ', disabled: S.writeBusy, onclick: function () { setArchived(true); } }));
+    if (a.canUnarchive) act.appendChild(el('button', { class: 'btn', type: 'button', id: 'unarchiveBtn', text: 'アーカイブから戻す', disabled: S.writeBusy, onclick: function () { setArchived(false); } }));
     pad.appendChild(act);
+    if (d.archive) pad.appendChild(el('div', { class: 'archived-note', id: 'archivedNote', text: 'アーカイブ済み（' + fmtTime(d.archive.at) + '　' + d.archive.byName + '）。一覧と件数には出ません。「アーカイブから戻す」で元に戻せます。' }));
     if (r.status === 'completed') pad.appendChild(el('div', { class: 'sec' }, [el('h4', { text: '完了コメント' }), el('div', { class: 'orig', id: 'doneComment', text: d.completionComment || '（コメントなし）' }),
       d.completedAt ? el('div', { class: 'unconfirmed', text: '完了：' + fmtTime(d.completedAt) }) : null]));
 
@@ -765,6 +771,10 @@
   function changeStatus(target, label) {
     if (target === 'unassigned' && !window.confirm('担当者を外して「未担当」に戻します。よろしいですか？')) return;
     write('changeRequestStatus', { requestId: S.selectedId, newStatus: target, expectedRowVersion: S.detail.request.rowVersion, clientOperationId: opId() }, '「' + label + '」を反映しました');
+  }
+  function setArchived(on) {
+    if (on && !window.confirm('この依頼をアーカイブします。一覧と件数から外れます。\n状態の絞り込みで「アーカイブ」を選ぶと見られ、いつでも元に戻せます。よろしいですか？')) return;
+    write('archiveRequest', { requestId: S.selectedId, archive: on, expectedRowVersion: S.detail.request.rowVersion, clientOperationId: opId() }, on ? 'アーカイブしました' : 'アーカイブから戻しました');
   }
   function saveNote() {
     write('updateSaNote', { requestId: S.selectedId, saNote: $('noteBox').value, expectedRowVersion: S.detail.request.rowVersion, clientOperationId: opId() }, '備考を保存しました');
