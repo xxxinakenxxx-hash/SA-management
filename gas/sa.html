@@ -52,6 +52,7 @@
   .btn.danger { color:var(--bad); border-color:#f0c8c3; }
   .btn.small { padding:3px 9px; font-size:12px; }
   a.btn { display:inline-block; text-decoration:none; white-space:nowrap; }
+  .btn[aria-pressed="true"] { background:var(--primary-weak); border-color:#c9d6fa; color:#233a85; font-weight:600; }
 
   .banner { margin:10px 18px 0; padding:10px 14px; border-radius:var(--radius); display:flex; gap:12px; align-items:center; border:1px solid; }
   .banner.err { background:var(--bad-weak); border-color:#f3c5c0; color:#7a1a12; }
@@ -81,6 +82,7 @@
   #list { padding:10px; display:flex; flex-direction:column; gap:10px; background:#f3f5fa; }
   #list .empty, #list .placeholder { background:transparent; }
   .card-item { display:flex; gap:6px; align-items:stretch; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 2px rgba(20,30,60,.06); overflow:hidden; }
+  .card-item { flex-shrink:0; }
   .card-item:hover { border-color:#b8c6f0; }
   .card-item .main-btn { flex:1; text-align:left; border:0; background:transparent; padding:11px 8px 11px 14px; min-width:0; border-left:4px solid transparent; }
   .card-item.on { border-color:var(--primary); background:var(--sel); box-shadow:0 0 0 1px var(--primary); }
@@ -206,7 +208,7 @@
             <select id="fDue" aria-label="期限"><option value="">期限：すべて</option><option value="overdue">期限超過</option><option value="today">本日</option><option value="within3">3日以内</option><option value="urgent">急ぎ</option></select>
             <button class="btn small" id="clearBtn" type="button">条件をクリア</button>
           </div>
-          <div class="listbar"><span id="count"></span><span class="grow"></span></div>
+          <div class="listbar"><span id="count"></span><span class="grow"></span><button class="btn small" id="hideDoneBtn" type="button" aria-pressed="false">完了を隠す</button></div>
         </div>
         <div id="orderBar" class="orderbar hidden"></div>
         <div class="bd" id="list"></div>
@@ -228,7 +230,7 @@
 (function () {
   'use strict';
   var STATUS = { unassigned: '未担当', in_progress: '対応中', waiting_sales: '営業回答待ち', completed: '完了' };
-  var S = { profile: null, items: [], counts: null, total: 0, f: { status: '', assignee: '', dueFilter: '', keyword: '', unread: false }, selectedId: null, detail: null, history: null,
+  var S = { profile: null, items: [], counts: null, total: 0, f: { status: '', assignee: '', dueFilter: '', keyword: '', unread: false }, hideDone: false, selectedId: null, detail: null, history: null,
     order: null, dirtyOrder: false, listBusy: false, writeBusy: false, retry: null,
     draft: {}, posting: false, composeErr: '', notices: [], known: {}, pollReady: false, pollBusy: false, popOpen: false, upBusy: false, upMsg: '', upRetry: null, dlBusy: false };
   var MSG_TYPE = { question: '質問', normal: '投稿', sales_reply: '返信', correction: '訂正', attachment_link: '成果物' };
@@ -399,7 +401,8 @@
     $('fStatus').addEventListener('change', function () { S.f.status = this.value; refreshList(true); });
     $('fAssignee').addEventListener('change', function () { S.f.assignee = this.value; refreshList(true); });
     $('fDue').addEventListener('change', function () { S.f.dueFilter = this.value; refreshList(true); });
-    $('clearBtn').addEventListener('click', function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: false }); });
+    $('hideDoneBtn').addEventListener('click', function () { S.hideDone = !S.hideDone; refreshList(true); });
+    $('clearBtn').addEventListener('click', function () { S.hideDone = false; setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: false }); });
     $('reloadBtn').addEventListener('click', function () {
       if (S.reloading) return;
       S.reloading = true; $('reloadBtn').disabled = true; hideBanner();
@@ -416,11 +419,13 @@
   function setFilters(f) {
     S.f = f; $('fStatus').value = f.status; $('fAssignee').value = f.assignee; $('fDue').value = f.dueFilter; $('kw').value = f.keyword; refreshList(true);
   }
-  function filtersActive() { return !!(S.f.status || S.f.assignee || S.f.dueFilter || S.f.keyword || S.f.unread); }
+  function filtersActive() { return !!(S.f.status || S.f.assignee || S.f.dueFilter || S.f.keyword || S.f.unread || S.hideDone); }
+  // 「完了を隠す」：状態を選んでいないときだけ、完了以外の3状態に絞る（状態を選んだときは、その選択を優先する）。
+  var OPEN_STATUSES = ['unassigned', 'in_progress', 'waiting_sales'];
 
   /* ---------- 一覧 ---------- */
   function listParams() {
-    return { status: S.f.status ? [S.f.status] : [], assignee: S.f.assignee, dueFilter: S.f.dueFilter, keyword: S.f.keyword, unreadOnly: !!S.f.unread, page: 1, pageSize: 200 };
+    return { status: S.f.status ? [S.f.status] : (S.hideDone ? OPEN_STATUSES.slice() : []), assignee: S.f.assignee, dueFilter: S.f.dueFilter, keyword: S.f.keyword, unreadOnly: !!S.f.unread, page: 1, pageSize: 200 };
   }
   function refreshList(resetOrder, kind) {
     if (resetOrder) { S.order = null; S.dirtyOrder = false; }
@@ -465,10 +470,11 @@
   }
   function renderList() {
     var box = $('list'); clear(box);
+    var hb = $('hideDoneBtn'); hb.textContent = S.hideDone ? '完了も表示' : '完了を隠す'; hb.setAttribute('aria-pressed', S.hideDone ? 'true' : 'false'); hb.disabled = !!S.f.status; hb.title = S.f.status ? '状態を選んでいるときは、その状態の依頼だけを表示します' : '';
     $('count').textContent = S.listBusy && !S.items.length ? '読み込み中です…' : S.total + '件' + (S.total > S.items.length ? '（先頭' + S.items.length + '件を表示）' : '');
     if (S.listBusy && !S.items.length) { box.appendChild(el('div', { class: 'empty', text: '読み込み中です…' })); renderOrderBar(); return; }
     if (!S.items.length) {
-      box.appendChild(el('div', { class: 'empty' }, [el('b', { text: '該当する依頼はありません' }), filtersActive() ? el('button', { class: 'btn small', type: 'button', text: '条件をクリア', onclick: function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '' }); } }) : document.createTextNode('新しい依頼が取り込まれると、ここに表示されます。')]));
+      box.appendChild(el('div', { class: 'empty' }, [el('b', { text: '該当する依頼はありません' }), filtersActive() ? el('button', { class: 'btn small', type: 'button', text: '条件をクリア', onclick: function () { S.hideDone = false; setFilters({ status: '', assignee: '', dueFilter: '', keyword: '' }); } }) : document.createTextNode('新しい依頼が取り込まれると、ここに表示されます。')]));
       renderOrderBar(); return;
     }
     var canMove = !filtersActive() && S.total <= S.items.length;
