@@ -30,6 +30,12 @@
   .nav.on { background:rgba(255,255,255,.14); color:#fff; font-weight:600; }
   .nav .n { font-size:12px; background:rgba(255,255,255,.12); border-radius:999px; padding:0 8px; min-width:26px; text-align:center; }
   .side .grow { flex:1; }
+  .sidelink { border:0; background:transparent; color:#9eaacb; text-align:left; padding:8px 10px; font-size:12px; border-radius:8px; }
+  .sidelink:hover { background:rgba(255,255,255,.07); color:#fff; }
+  .clog { list-style:none; margin:0; padding:0; max-height:55vh; overflow:auto; }
+  .clog li { padding:8px 0; border-bottom:1px solid var(--line2); }
+  .clog li:last-child { border-bottom:0; }
+  .clog .d { display:block; font-size:12px; color:var(--faint); }
   .me { font-size:12px; color:#9eaacb; padding:10px; border-top:1px solid rgba(255,255,255,.1); }
   .me b { color:#fff; display:block; font-size:13px; }
 
@@ -181,6 +187,7 @@
     <div class="brand">AIメモSA管理<small>SA依頼ワークスペース</small></div>
     <div id="nav"></div>
     <div class="grow"></div>
+    <button class="sidelink" id="changeLogBtn" type="button">更新履歴</button>
     <div class="me" id="me">読み込み中です…</div>
   </aside>
   <div class="main">
@@ -410,6 +417,7 @@
       Promise.resolve(reloadAll('update')).then(fin, fin);
     });
     $('storageBtn').addEventListener('click', function () { storageDialog(); });
+    $('changeLogBtn').addEventListener('click', function () { changeLogDialog(); });
     $('bellBtn').addEventListener('click', function (ev) { ev.stopPropagation(); S.popOpen = !S.popOpen; renderBell(); });
     document.addEventListener('click', function (ev) { if (S.popOpen && !$('pop').contains(ev.target)) { S.popOpen = false; renderBell(); } });
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && S.popOpen) { S.popOpen = false; renderBell(); } });
@@ -765,6 +773,19 @@
     var foot = el('div', { class: 'df' }); buttons.forEach(function (b) { foot.appendChild(b); });
     m.appendChild(el('div', { class: 'dlg' }, [el('div', { class: 'dh2', text: title }), el('div', { class: 'db' }, bodyKids), foot]));
     m.classList.remove('hidden');
+  }
+  /* ---------- 更新履歴（スプレッドシート「SA管理」の「更新履歴」シートを読んで表示） ---------- */
+  function changeLogDialog() {
+    var body = el('div', { id: 'clogBody', class: 'unconfirmed', text: '読み込み中です…' });
+    openModal('更新履歴', [body], [el('button', { class: 'btn', type: 'button', text: '閉じる', onclick: closeModal })]);
+    api('getChangeLog', {}).then(function (res) {
+      if (!$('clogBody')) return;
+      clear(body); body.className = '';
+      if (!res.success) { body.className = 'unconfirmed'; body.textContent = '更新履歴を読み込めませんでした。しばらくしてから開き直してください。'; return; }
+      var items = res.data.items || [];
+      if (!items.length) { body.className = 'unconfirmed'; body.textContent = '更新履歴はまだありません。'; return; }
+      body.appendChild(el('ul', { class: 'clog' }, items.map(function (x) { return el('li', {}, [el('span', { class: 'd', text: x.date }), el('span', { text: x.text })]); })));
+    });
   }
   function closeModal() { var m = $('modal'); m.classList.add('hidden'); clear(m); }
   function summary() {
