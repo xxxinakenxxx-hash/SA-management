@@ -13,7 +13,7 @@
 | `docs/正本/` | 6文書が存在（概要企画書・要件定義書・技術設計書・DB設計書・API・内部関数設計書・画面設計書） |
 | 基本設計・計画 | `docs/計画/`（開発工程表・未確定事項確認書）、`docs/実装指示書/`（工程00〜05の6本）、`docs/記録/`（工程00_技術検証記録）が存在 |
 | 業務機能実装 | 工程00：完了判定済み（CHAT_CURRENT 2026-10-28）／工程01：完了判定済み（同 2026-10-29）／工程02：実施・管理側が照合済み（PR #17・#18、得意先名の取込。「完了」の判定記録は、今回確認した範囲では未確認）／**工程03：条件付き完了**（T6合格、T7主要項目合格、未確認2点）／工程04：追加改修を実施・本番反映済み／工程05：本番@67で通し試験合格・条件付き完了 |
-| 本番GAS（反映先） | スクリプトID `1Pz-FzPPSFaQTOImIOyD-Dy2leZq7vymo6nnelDqvuGs1BjtttML4C-U_`（SA管理スプレッドシートに付いたGAS。`clasp list` には出ない）。本番公開ID `AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0`（現在 @75、2026-11-19更新）。反映手順：作業用フォルダで `clasp clone <スクリプトID>` → main の `gas/` と全ファイル照合 → `clasp push --force` → `clasp create-deployment -i <本番公開ID>`（既存の本番公開を新しい版へ。新規公開は作らない）→ 版を取り直して照合 → `clasp logout`。この作業環境から `script.google.com` の画面は開けないため、本番の確認は公開一覧と版の中身の照合で行う |
+| 本番GAS（反映先） | スクリプトID `1Pz-FzPPSFaQTOImIOyD-Dy2leZq7vymo6nnelDqvuGs1BjtttML4C-U_`（SA管理スプレッドシートに付いたGAS。`clasp list` には出ない）。本番公開ID `AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0`（現在 @76、2026-11-20更新）。反映手順：作業用フォルダで `clasp clone <スクリプトID>` → main の `gas/` と全ファイル照合 → `clasp push --force` → `clasp create-deployment -i <本番公開ID>`（既存の本番公開を新しい版へ。新規公開は作らない）→ 版を取り直して照合 → `clasp logout`。この作業環境から `script.google.com` の画面は開けないため、本番の確認は公開一覧と版の中身の照合で行う |
 
 以下の「変更履歴」は、作業時点の記録をそのまま残す。当時の「未作成」「未着手」「未実施」「削除する予定」などの記述は、その時点の事実であり、現在の状態は上の表と末尾の最新日付の記録を参照する。
 
@@ -1083,3 +1083,21 @@ C6の仕様判断（管理側）。工程05全体の完了判定は指示監督�
 - 「更新履歴」シートへの「商品検索AI」の行の追記：実装側は行っていない。利用者から「できてる」との報告があったが、画像に更新履歴の一覧は写っておらず、実装側では内容を未確認。誰が追記したかも実装側では不明。
 - 変更：本節の記録のみ。
 - 追記（同日）：利用者が「更新履歴」シートに「商品検索AI」ボタン追加の行を入力し、「できた」と報告（利用者の報告による。実装側ではシートの中身を未確認）。
+
+### 2026-11-19〜20：依頼のアーカイブ機能の追加・本番反映（実装側：Claude Code）
+
+- **指示（利用者、2026-11-19）**：左の一覧に利用者のテスト依頼が残り、消す方法がない。案A（アーカイブ）を採用。アーカイブできる人はSA全員。一覧の絞り込みに「アーカイブ」を足し、見られる・戻せるようにする。本番反映は利用者が明示的に許可（2026-11-19）。
+- **物理削除を採らなかった理由（コードで確認）**：取込は `sa_requests` に同じ `source_record_id` の行があるかで重複を判断する（`03_import.js`）。行を消すと次の5分ごとの取込で再び入る。元の営業AIメモは読み取りのみで変更しない。スレッド・添付・履歴も行に結び付いている。
+- **変更（main `41cc2ea`）**
+  - `01_schema.js`：`sa_requests` の末尾に `archived_at`（DateTime）・`archived_by`（String）を追加（35列）。
+  - `12_requests.js`：`ensureRequestArchiveColumns_()` を追加。既存の表が33列なら、末尾の空き列に2列の見出しを足し、文字列の書式にする。既存の行・値には触れない。見出しが想定外なら `SCHEMA_MISMATCH` で止める。完了後はスクリプトプロパティ `SA_REQUESTS_ARCHIVE_COLS=1` を立て、以後は確認を省く。API の入口（`runApi_`）と定期取込（`runScheduledImport`）の最初に呼ぶ。`isArchivedRequest_()` を追加。
+  - `20_api.js`：API `archiveRequest`（SAのみ。`requestId`・`archive`（true／false）・`expectedRowVersion`・`clientOperationId`）。既存の更新共通処理（ロック・二重送信防止・版番号・操作履歴）を使う。操作履歴の種類は `archived`／`unarchived`。`listRequests` はアーカイブした依頼を件数・通常一覧から外し、SAが `archivedOnly: true` を指定したときだけアーカイブ分を返す（件数に `archived` を追加）。営業にはアーカイブ分を返さない。詳細に `canArchive`／`canUnarchive` と、アーカイブ済みなら日時・実行者を返す。一覧の項目に `archived`・`archivedAt` を追加。
+  - `11_validate.js`：`archiveRequest` の入力検証、`listRequests` の `archivedOnly`。
+  - `sa.html`：状態の絞り込みに「アーカイブ」、カードに「アーカイブ」の印、詳細に「アーカイブ」（確認あり）／「アーカイブから戻す」ボタンとアーカイブ済みの案内。
+  - `05_trigger.js`：定期取込の最初で列の追加を確認。
+- **検査（作業環境）**：模擬の表（メモリ上）でGASのコードを実行し、33列→35列への自動追加、取込、アーカイブ→通常一覧・件数から外れる／アーカイブ一覧に出る、アーカイブ後の再取込で重複扱い（再取込0件・行数不変）、戻す、二重アーカイブ・古い版は CONFLICT、営業の戻すは FORBIDDEN、入力不足は VALIDATION_ERROR、操作履歴に「アーカイブ」を確認。ブラウザで、押すと一覧から消え案内と「アーカイブから戻す」が出る、「アーカイブ」を選ぶと出る、戻すと通常一覧に戻る、画面のエラー0件を確認。全 `.js` の構文確認と `git diff --check` は成功。
+- **GAS反映**：反映前のGAS（22ファイル）は main `69badf9` と一致。`clasp push --force`（`Pushed 22 files at 12:15:22 AM.`。UTC、日本時間 2026-11-20 09:15）。
+- **本番デプロイ更新**：既存の本番公開 `AKfycbxFOoDzJR…` を @75 → @76 に更新（新規公開なし。説明「アーカイブ機能（main 41cc2ea）」）。@76 を読み直し、22ファイルすべて main と一致。戻し方：`clasp create-deployment -i AKfycbxFOoDzJR… -V 75`（追加した2列は残るが、旧版は列数を33として読むため影響しない）。
+- **未確認**：本番の `sa_requests` に2列が実際に追加されたこと（最初の定期取込または画面操作で追加される。実装側は表を読めない）。本番画面での表示と操作。
+- **正本との関係**：`sa_requests` の2列追加、API `archiveRequest`、`listRequests` の `archivedOnly` は、SA管理のDB設計書・API設計書・画面設計書にまだ書かれていない追加（利用者の直接指示による）。
+- **ログイン**：日付をまたいで待機中のログイン処理が止まったため、承認URLを作り直して再承認を受けた。作業後に `clasp logout` 済み。
