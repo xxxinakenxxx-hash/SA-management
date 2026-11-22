@@ -48,6 +48,10 @@ var SA_SCHEMA_ = {
   sa_request_folders: [
     ['request_id', 'String'], ['branch_id', 'String'], ['drive_folder_id', 'String'], ['base_setting_id', 'String'],
     ['created_by_user_id', 'String'], ['created_at', 'DateTime']
+  ],
+  // 定期取込の対象営業所の設定（2026-11-23 追加）。DB9表とは別の設定シートで、initializeSaTables の対象には入れない。
+  sa_import_targets: [
+    ['branch_name', 'String'], ['import_enabled', 'Boolean']
   ]
 };
 
@@ -97,6 +101,61 @@ function initializeSaTables() {
       (ensureTable_(ss, n) === 'created' ? created : existing).push(n);
     });
     return { created: created, existing: existing };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 取込設定シート sa_import_targets の最初の1回だけの用意（定期取込の最初に呼ぶ）。
+// シートが無ければ作り、営業AIの user_master にある所属名（master_branch_name）を1行ずつ登録する。
+// TRUE にするのは、切替前の取込対象（getImportBranch_。未設定なら鹿児島）だけ。ほかは FALSE。
+// 用意が済んだらスクリプトプロパティに印を付け、以後は何もしない（印の後にシートが無くなった場合は、作り直さず設定エラーにする）。
+var SA_IMPORT_TARGETS_INIT_PROP_ = 'SA_IMPORT_TARGETS_INIT';
+
+// 営業AIの user_master から、所属名を重複なく、表の上から出てきた順に読む（読み取り専用）。
+function readMasterBranchNames_() {
+  var res = Sheets.Spreadsheets.Values.get(getSalesDbId_(), "'user_master'");
+  var v = res.values || [];
+  if (!v.length) throw new Error('MASTER_EMPTY');
+  var col = -1;
+  v[0].forEach(function (n, i) { if (String(n).trim() === 'master_branch_name') col = i; });
+  if (col < 0) throw new Error('MASTER_COLUMN_MISSING:master_branch_name');
+  var seen = {}, names = [];
+  for (var i = 1; i < v.length; i++) {
+    var x = v[i][col];
+    var name = String(x === undefined || x === null ? '' : x).trim();
+    if (!name || seen[name]) continue;
+    seen[name] = true;
+    names.push(name);
+  }
+  return names;
+}
+
+function ensureImportTargetsSheet_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(SA_IMPORT_TARGETS_INIT_PROP_) === '1') return 'done';
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('LOCK_TIMEOUT');
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName(SA_IMPORT_TARGETS_SHEET_);
+    var result = 'exists';
+    if (!sh || sh.getLastRow() < 2) {
+      // 登録する行を先に決める（決められなければ、シートを作らずに止める）。
+      var names = readMasterBranchNames_();
+      var current = getImportBranch_();
+      if (names.indexOf(current) < 0) throw new Error('IMPORT_TARGETS_SEED_INVALID');
+      ensureTable_(ss, SA_IMPORT_TARGETS_SHEET_);
+      sh = ss.getSheetByName(SA_IMPORT_TARGETS_SHEET_);
+      var rows = names.map(function (n) { return [n, n === current]; });
+      sh.getRange(2, 1, rows.length, 2).setValues(rows);
+      result = 'created';
+    } else {
+      ensureTable_(ss, SA_IMPORT_TARGETS_SHEET_); // 見出しの確認だけ（中身には触れない）
+    }
+    SpreadsheetApp.flush();
+    props.setProperty(SA_IMPORT_TARGETS_INIT_PROP_, '1');
+    return result;
   } finally {
     lock.releaseLock();
   }
