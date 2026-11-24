@@ -127,7 +127,7 @@ details[open] summary:after{content:"−"}
       <p>依頼の確認から担当、営業への質問、完了登録まで。画面に表示される言葉に合わせて、毎日の操作を短くまとめました。</p>
       <a class="app-link" href="https://script.google.com/a/macros/marubishi-group.co.jp/s/AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0/exec" target="_blank" rel="noopener">本番のAIメモSA管理を開く <span aria-hidden="true">↗</span></a>
     </div>
-    <aside class="hero-note"><span>対象画面</span><strong>AIメモSA管理</strong><span>本番画面の表示を確認して作成<br>確認日：2026年11月12日</span></aside>
+    <aside class="hero-note"><span>対象画面</span><strong>AIメモSA管理</strong><span>本番画面の表示を確認して作成<br>確認日：2026年11月12日<br>追記：2026年11月24日（その後の機能）</span></aside>
   </div>
 </section>
 <div class="layout">
@@ -139,9 +139,11 @@ details[open] summary:after{content:"−"}
       <a href="#assign"><span>03</span>担当・期限</a>
       <a href="#communicate"><span>04</span>営業への質問・投稿</a>
       <a href="#finish"><span>05</span>完了・共有メモ</a>
+      <a href="#summary"><span>06</span>集計</a>
+      <a href="#buttons"><span>07</span>画面の上と左のボタン</a>
       <div class="toc-divider"></div>
-      <a href="#help"><span>06</span>ヘルプ</a>
-      <a href="#labels"><span>07</span>画面用語</a>
+      <a href="#help"><span>08</span>ヘルプ</a>
+      <a href="#labels"><span>09</span>画面用語</a>
     </nav>
     <div class="side-actions">
       <button class="action-button" onclick="window.print()">印刷する / PDF保存</button>
@@ -167,6 +169,21 @@ details[open] summary:after{content:"−"}
           <li><span class="screen-label">条件をクリア</span>を押し、条件を外して探し直します。</li>
         </ol>
         <p class="section-sub">一覧には状態、担当者、期限で絞る項目があります。期限は「期限超過」「今日」「3日以内」「急ぎ」を選べます。</p>
+      </div>
+      <div class="card">
+        <div class="two-col">
+          <div class="mini-card">
+            <h3>完了した依頼を一覧から隠す</h3>
+            <ol><li>依頼一覧の上にある<span class="screen-label">完了を隠す</span>を押します。</li><li>完了した依頼が一覧から消え、ボタンの文字が<span class="screen-label">完了も表示</span>に変わります。</li><li>もう一度押すと、完了した依頼も表示に戻ります。</li></ol>
+            <p>状態の絞り込みで「完了」などを選んでいるときは、その選択が優先され、このボタンは押せません。<span class="screen-label">条件をクリア</span>を押すと、隠す設定も外れます。</p>
+          </div>
+          <div class="mini-card">
+            <h3>片付けたい依頼をアーカイブする</h3>
+            <ol><li>依頼を開き、<span class="screen-label">アーカイブ</span>を押します。</li><li>確認の画面で「OK」を押すと、その依頼は一覧と件数から外れます。</li><li>見たいときは、状態の絞り込みで「アーカイブ」を選びます。</li><li>元に戻すときは、依頼を開いて<span class="screen-label">アーカイブから戻す</span>を押します。</li></ol>
+            <p>アーカイブは、一覧が多くなりすぎないように片付けるためのものです。依頼は消えません。SAなら誰でも操作できます。</p>
+          </div>
+        </div>
+        <div class="callout"><span class="icon">ℹ️</span><div>アーカイブした依頼も、実際の仕事です。「集計」の件数には含まれます（06 集計）。</div></div>
       </div>
     </section>
 
@@ -234,7 +251,18 @@ details[open] summary:after{content:"−"}
           </tbody>
         </table>
         <div class="callout"><span class="icon">✍️</span><div>入力欄の表示名は<span class="screen-label">本文</span>です。質問のつもりで通常の投稿を選ぶなど、種類の選択違いがないか送信前に確認します。</div></div>
-        <div class="callout error"><span class="icon">!</span><div>送信後はスレッドの表示を確認してください。本番画面では「営業へ通知：送信できませんでした」という通知失敗表示も確認されています。失敗表示が出た場合、営業への通知が届いたと判断しないでください。この画面では再送方法・問い合わせ先は確認できていません。</div></div>
+        <div class="callout error"><span class="icon">!</span><div>送信後はスレッドの表示を確認してください。営業へ通知できたときは「営業へ通知：送信済み」、できなかったときは「営業へ通知：送信できませんでした」と出ます。送信できなかった場合でも、投稿は保存されていて、営業は画面を開けば内容を見られます。ただし、営業に知らせは届いていません。</div></div>
+        <div class="callout warn"><span class="icon">!</span><div><b>通知を送り直したいとき</b><br>SA画面からは送り直せません。システム管理者に連絡してください。管理者が、送れなかった通知をまとめて送り直します。急ぐときは、営業に電話などで直接伝えてください。</div></div>
+      </div>
+      <div class="card">
+        <h3>営業に写真を送ってもらう</h3>
+        <p class="lead">商品の裏ラベルや売り場の様子など、写真がほしいときの手順です。</p>
+        <div class="steps">
+          <div class="step"><span class="step-no">1</span><div class="step-content"><h3>SAが「営業へ質問」で頼む</h3><p>例：「裏ラベルの写真を送ってください」。営業のGoogle Chatに知らせが届きます。</p></div></div>
+          <div class="step"><span class="step-no">2</span><div class="step-content"><h3>営業がスマホで写真を送る</h3><p>営業は知らせのリンクから依頼を開き、返信欄の<span class="screen-label">📷 写真</span>を押して写真を選びます。1回に4枚まで送れます。</p></div></div>
+          <div class="step"><span class="step-no">3</span><div class="step-content"><h3>SAがスレッドで写真を見る</h3><p>スレッドに「写真」の印が付いた発言が出ます。<span class="screen-label">写真を見る</span>を押すと、画面の上で大きく表示されます。</p></div></div>
+        </div>
+        <div class="callout"><span class="icon">ℹ️</span><div>写真を送れるのは、その依頼を出した営業本人だけです。送られた写真は、ほかの添付ファイルと同じく依頼のフォルダに保存されます。</div></div>
       </div>
     </section>
 
@@ -247,27 +275,79 @@ details[open] summary:after{content:"−"}
           <div class="mini-card"><h3>添付ファイル</h3><p>スレッドの添付ファイル欄から<span class="screen-label">ファイルを追加</span>を押します。追加後、画面に表示されたファイル名を確認します。</p></div>
           <div class="mini-card"><h3>完了登録</h3><p>対応が終わった依頼で<span class="screen-label">完了登録</span>を押し、一覧で状態が「完了」になったことを確認します。</p></div>
         </div>
-        <div class="callout warn"><span class="icon">!</span><div>完了登録後の確認ダイアログや必須入力欄の有無は、今回の画面確認では操作していないため未確認です。完了登録時は画面の案内を読み、表示内容に従ってください。</div></div>
+      </div>
+      <div class="card">
+        <h3>完了登録の流れ</h3>
+        <ol>
+          <li>依頼を開き、<span class="screen-label">完了登録</span>を押します。「完了を登録しますか？」の画面が開きます。</li>
+          <li><span class="screen-label">完了コメント</span>に、営業に伝える内容を書きます。<b>コメントは必須</b>です（2000文字まで）。</li>
+          <li>添付ファイルがある場合は、<span class="screen-label">営業へ返却する成果物</span>の中から、営業に渡すものにチェックを付けます。選ばなくても完了できます。添付がなければ、コメントだけで完了します。</li>
+          <li><span class="screen-label">完了登録</span>を押します。営業に完了の知らせが送られます。</li>
+        </ol>
+        <div class="callout"><span class="icon">ℹ️</span><div>知らせが送れなかった場合でも、完了は保存されます。営業は画面を開けば完了の内容を見られます。完了したあとも、<span class="screen-label">対応を再開する</span>で元に戻せます。</div></div>
+      </div>
+    </section>
+
+    <section class="section" id="summary">
+      <div class="section-heading"><span class="section-index">06</span><div><h2>集計（月ごと・人ごとの件数）</h2><p class="section-sub">左側の「集計」から、月ごとの件数を見られます。</p></div></div>
+      <div class="card">
+        <ol>
+          <li>左側の<span class="screen-label">集計</span>を押します。今月の集計が出ます。</li>
+          <li>ほかの月を見るときは、上の月の選択から選びます。</li>
+          <li>数字を押すと、その数字に入っている依頼の一覧が下に出ます。依頼名を押すと、その依頼が開きます。</li>
+          <li>依頼一覧に戻るときは、左側の<span class="screen-label">すべて</span>などを押します。</li>
+        </ol>
+        <table>
+          <thead><tr><th>表示</th><th>数え方</th></tr></thead>
+          <tbody>
+            <tr><td>受付</td><td>その月に受け付けた依頼（営業がAIメモに記録した日）</td></tr>
+            <tr><td>完了</td><td>その月に完了した依頼（前の月に受け付けたものも含む）</td></tr>
+            <tr><td>受付のうち未完了</td><td>その月に受け付けた依頼のうち、まだ完了していないもの</td></tr>
+            <tr><td>平均の対応日数</td><td>その月に完了した依頼の、受付から完了までの日数の平均</td></tr>
+            <tr><td>SA別（担当）</td><td>今の担当SAごとの件数。担当が決まっていない依頼は「未担当」の行にまとまります</td></tr>
+            <tr><td>営業別</td><td>依頼した営業ごとの件数</td></tr>
+          </tbody>
+        </table>
+        <div class="callout"><span class="icon">ℹ️</span><div>数えるのは自分の営業所の依頼です。アーカイブした依頼も含みます。</div></div>
+      </div>
+    </section>
+
+    <section class="section" id="buttons">
+      <div class="section-heading"><span class="section-index">07</span><div><h2>画面の上と左のボタン</h2><p class="section-sub">依頼の作業以外に使うボタンです。</p></div></div>
+      <div class="card">
+        <table>
+          <thead><tr><th>ボタン</th><th>場所</th><th>押すと</th></tr></thead>
+          <tbody>
+            <tr><td>商品検索AI</td><td>画面の上（色付き）</td><td>商品検索AIが新しいタブで開きます。</td></tr>
+            <tr><td>改善・不具合を報告</td><td>画面の上</td><td>営業AIメモの報告フォームが新しいタブで開きます。使いにくい点や不具合を送れます。</td></tr>
+            <tr><td>最新に更新</td><td>画面の上</td><td>一覧と、開いている依頼を読み直します（08 ヘルプも参照）。</td></tr>
+            <tr><td>更新履歴</td><td>画面の左下</td><td>SA画面に追加した機能や直した点が、新しい順に出ます。</td></tr>
+            <tr><td>マニュアル</td><td>画面の左下</td><td>このマニュアルが新しいタブで開きます。</td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
     <section class="section" id="help">
-      <div class="section-heading"><span class="section-index">06</span><div><h2>ヘルプ</h2><p class="section-sub">よくある状況ごとの確認先です。</p></div></div>
+      <div class="section-heading"><span class="section-index">08</span><div><h2>ヘルプ</h2><p class="section-sub">よくある状況ごとの確認先です。</p></div></div>
       <div class="card">
         <details><summary>依頼が見つかりません</summary><div class="answer"><p>検索欄と状態・担当・期限の条件を確認し、<span class="screen-label">条件をクリア</span>を押してから探し直します。左側の「すべて」も確認してください。</p></div></details>
         <details><summary>自分が対応する依頼を見たい</summary><div class="answer"><p>左側の<span class="screen-label">自分の担当</span>を選びます。未読の依頼を確認するときは<span class="screen-label">未読あり</span>も使えます。</p></div></details>
         <details><summary>AIの抽出内容が原文と違います</summary><div class="answer"><p>「依頼内容（営業が登録した文章）」を読み直し、5項目と照合します。「要確認」表示の内容はそのまま確定扱いにしないでください。画面上でAI項目を直接編集できる操作は確認できていません。</p></div></details>
         <details><summary>期限が「急ぎ」だが具体日付がありません</summary><div class="answer"><p>画面の期限訂正には<span class="screen-label">急ぎ（日付は付けません）</span>の選択肢があります。日付を決められない依頼に日付を推測で入力しないでください。</p></div></details>
-        <details><summary>営業に質問したのに返事がありません</summary><div class="answer"><p>まず依頼の状態が「営業回答待ち」か、スレッドに送信内容があるかを確認します。「営業へ通知：送信できませんでした」と表示されている場合は通知失敗です。画面内で再送手順や問い合わせ先は確認できていません。</p></div></details>
+        <details><summary>営業に質問したのに返事がありません</summary><div class="answer"><p>まず依頼の状態が「営業回答待ち」か、スレッドに送信内容があるかを確認します。「営業へ通知：送信できませんでした」と表示されている場合は通知失敗です。SA画面からは送り直せないため、システム管理者に連絡してください。急ぐときは営業に直接伝えてください。</p></div></details>
+        <details><summary>完了した依頼が多くて一覧が見にくい</summary><div class="answer"><p>一覧の上の<span class="screen-label">完了を隠す</span>を押すと、完了した依頼が消えます。もう一度押すと元に戻ります。もう見ない依頼は<span class="screen-label">アーカイブ</span>で一覧から片付けられます（01 まず見る場所）。</p></div></details>
+        <details><summary>アーカイブした依頼を戻したい</summary><div class="answer"><p>状態の絞り込みで「アーカイブ」を選び、依頼を開いて<span class="screen-label">アーカイブから戻す</span>を押します。</p></div></details>
+        <details><summary>営業から写真をもらいたい</summary><div class="answer"><p>「営業へ質問」で写真を頼みます。営業がスマホの<span class="screen-label">📷 写真</span>から送ると、スレッドに出ます（04 営業への質問・投稿）。</p></div></details>
         <details><summary>メモを営業に見せたい</summary><div class="answer"><p>備考欄は「営業には表示されません」と明記されています。営業へ伝える内容はスレッドから投稿してください。</p></div></details>
         <details><summary>担当者を交代したい</summary><div class="answer"><p><span class="screen-label">担当を変更</span>を開いて変更先のSAを選びます。必要なら理由を入力します。画面説明ではSA間の変更に承認は不要で、操作履歴に記録されます。</p></div></details>
         <details><summary>期限の訂正で元の依頼文も変わりますか？</summary><div class="answer"><p>画面説明では営業が登録した依頼原文は変更されません。訂正した人と時刻が記録されます。</p></div></details>
-        <details><summary>「最新に更新」はいつ使いますか？</summary><div class="answer"><p>画面上部に<span class="screen-label">最新に更新</span>ボタンがあります。更新後の挙動の詳細は今回確認していません。表示が変わらない場合は、ボタンを押して一覧を再確認してください。</p></div></details>
+        <details><summary>「最新に更新」はいつ使いますか？</summary><div class="answer"><p>画面上部に<span class="screen-label">最新に更新</span>ボタンがあります。押すと、依頼一覧と件数を読み直し、依頼を開いていればその内容も読み直します。ほかのSAや営業が書き込んだ内容がすぐに出ないときに押してください。読み直している間は、ボタンが押せなくなります。</p></div></details>
       </div>
     </section>
 
     <section class="section" id="labels">
-      <div class="section-heading"><span class="section-index">07</span><div><h2>画面用語と確認範囲</h2><p class="section-sub">実画面のボタン名・項目名をそのまま記載しています。</p></div></div>
+      <div class="section-heading"><span class="section-index">09</span><div><h2>画面用語と確認範囲</h2><p class="section-sub">実画面のボタン名・項目名をそのまま記載しています。</p></div></div>
       <div class="card">
         <table>
           <thead><tr><th>画面の表示</th><th>意味・見るポイント</th></tr></thead>
@@ -279,16 +359,19 @@ details[open] summary:after{content:"−"}
             <tr><td>操作の履歴</td><td>担当変更などの操作記録を確認する欄</td></tr>
             <tr><td>備考</td><td>SA同士の共有用。営業には表示されない</td></tr>
             <tr><td>スレッド</td><td>質問・投稿と添付ファイルを確認する欄</td></tr>
+            <tr><td>アーカイブ</td><td>一覧と件数から外した依頼。消えてはいない。状態の絞り込みで見られる</td></tr>
+            <tr><td>写真</td><td>営業がスマホから送った写真の発言の印</td></tr>
+            <tr><td>集計</td><td>月ごと・SA別・営業別の件数を見る画面</td></tr>
           </tbody>
         </table>
         <div class="checklist">
           <div class="check"><b>画面で確認した内容</b>一覧・検索条件・状態ボタン、依頼詳細、AIの5項目、担当変更と期限訂正の画面、備考、スレッドと添付欄。</div>
-          <div class="check"><b>操作結果まで確認していない内容</b>実データへの登録・送信・状態変更、完了登録時の確認画面、通知失敗時の再送・社内問い合わせ先。</div>
+          <div class="check"><b>操作結果まで確認していない内容</b>実データへの登録・送信・状態変更。11月24日に追記した説明（01の後半、04の写真と通知の送り直し、05の完了登録の流れ、06・07、08の一部）は、画面のプログラムの内容をもとに書いています。</div>
         </div>
         <div class="callout"><span class="icon">↗</span><div>本番画面を開く：<a href="https://script.google.com/a/macros/marubishi-group.co.jp/s/AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0/exec" target="_blank" rel="noopener">AIメモSA管理</a></div></div>
       </div>
     </section>
-    <footer class="footer">AIメモSA管理｜基本作業・ヘルプマニュアル　·　画面確認日 2026年11月12日<br>画面上で確認できない運用ルールや問い合わせ先は、本書では補っていません。</footer>
+    <footer class="footer">AIメモSA管理｜基本作業・ヘルプマニュアル　·　画面確認日 2026年11月12日（11月24日に、その後追加した機能の説明を追記）<br>画面上で確認できない運用ルールや問い合わせ先は、本書では補っていません。</footer>
   </main>
 </div>
 <script>
