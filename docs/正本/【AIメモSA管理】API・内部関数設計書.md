@@ -115,7 +115,7 @@
 | FN-12 | `deliverPendingNotifications_` | 営業1人ずつの1対1チャットに置いたGoogle Chat Webhook（表示名「SA依頼」）へ、その営業にだけ送信し、再試行・状態記録を行う。送り先はスクリプトプロパティ SA_CHAT_WEBHOOK_<営業のuser_key>。未設定の営業への通知は `failed` として記録し、投稿は保存する。全員向けの部屋への通知は行わない。配送結果で依頼状態を変えない | `sa_notifications` |
 | FN-13 | `readThreadCursor_` | 未読位置の参照・更新 | `sa_read_cursors`候補 |
 | FN-14 | `recordImportOutcome_` | 取込結果・失敗・再試行経過 | `sa_import_log`候補 |
-| FN-15 | `extractSaRequestFields_` | OpenAI APIで5項目を抽出してsa_requestsの正式列へ保存。抽出不可はnull、状態pending/complete/needs_review/failed。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。本物の依頼文の送信は1件ずつユーザー許可を得る。 | sa_requests抽出5列・原文・状態 |
+| FN-15 | `extractSaRequestFields_` | OpenAI APIで5項目を抽出してsa_requestsの正式列へ保存。抽出不可はnull、状態pending/complete/needs_review/failed。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。自動取込の設置（2026-11-12）以降は、取り込んだ依頼を自動でAIに送る。 | sa_requests抽出5列・原文・状態 |
 | FN-16 | `parseDriveFolderUrl_` | 入力されたURLからDriveフォルダIDを取り出し、形式を検査する（フォルダ以外のURL・不正な文字は拒否） | なし（入力検証） |
 | FN-17 | `readBranchStorageSetting_` | 営業所の現在の保存先設定（最新の版）を取得する | `sa_branch_settings` |
 | FN-18 | `verifyDriveFolderWritable_` | 保存先の中に確認用の一時フォルダを作って削除し、フォルダの存在と書込可否を確認する。共有設定は変更しない | Drive |
@@ -142,7 +142,7 @@
 1. 権限確認済みの新システム内部処理が、既存`deal_records`をSheets API読み取り専用（`spreadsheets.readonly`）で読み取る（`SpreadsheetApp.openById`は編集権限を要求するため使わない）。現行GASにSA依頼専用取得APIはない。
 2. `branch_name`の営業所名の文字列で鹿児島を対象に限定し（利用者は`user_master.master_branch_name`、依頼は`deal_records.branch_name`。`branch_id`は営業所名）、`deal_theme`の「SA依頼｜」で選別する。`sa_case`は現行GASの一時分類でありDB上の独立列ではない。
 3. `record_id`だけを取込識別キーとし、必要な`user_key`・`branch_name`・`deal_theme`・`original_text`を元レコードIDにより権限付きで取得して取込時のスナップショットとして保存する。`deal_content`は必要時のみ保持。非SA商談は複製しない。元データを変更しない。
-4. 新内部関数候補`extractSaRequestFields_`（FN-15案）が、`deal_theme`と`original_text`を主入力に「誰に／何を／依頼の種類／決まっていること／いつまで」を構造化し、`sa_requests`の対応列へ保存する。曖昧・不明項目を創作せず抽出状態に記録し、元文章を消さない。「依頼の種類」は依頼文にその言葉が書かれている場合だけ採用し（空白・全角半角の違いを除いて原文に含まれなければ null）、内容から種類名を推測して作らない。「決まっていること」が「〜の」で終わる言葉の断片（例：「試験用の」）だけの場合は条件として使わず null とする。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。本物の依頼文の送信は1件ずつユーザー許可を得る。
+4. 新内部関数候補`extractSaRequestFields_`（FN-15案）が、`deal_theme`と`original_text`を主入力に「誰に／何を／依頼の種類／決まっていること／いつまで」を構造化し、`sa_requests`の対応列へ保存する。曖昧・不明項目を創作せず抽出状態に記録し、元文章を消さない。「依頼の種類」は依頼文にその言葉が書かれている場合だけ採用し（空白・全角半角の違いを除いて原文に含まれなければ null）、内容から種類名を推測して作らない。「決まっていること」が「〜の」で終わる言葉の断片（例：「試験用の」）だけの場合は条件として使わず null とする。確定（工程00）：営業AIと同じ gpt-4o-mini、キーはスクリプトプロパティ AI_API_KEY、UrlFetchApp で呼ぶ。5項目はJSONスキーマで受け取り、返りの文字列「null」は取込時に null へ正規化する。4xx は再試行せず、429・5xx のみ待ち時間を倍にして最大3回再試行する。自動取込の設置（2026-11-12）以降は、取り込んだ依頼を自動でAIに送る。
 5. 取込成功後の担当・状態・スレッド・添付・履歴・通知は新SA管理側が制御する。失敗時に元ID・元文章を維持し再試行可能とする。旧「SA案件」の他拠点過去データは対象外。
 
 これらは**新SA管理側のGAS（`gas/`）に実装した関数**であり、営業AIメモ側のGASに存在するとは扱わない。既存GASのSA依頼受付・追加質問・保存処理は変更しない。鹿児島の所属判定、取得権限、通信・認証は工程00で確認済み。AI構造化は工程05の本番通し試験で保存値を確認し、抽出の決まり（V6）の再試験に合格した。実際の依頼での精度は運用中に確認する。
