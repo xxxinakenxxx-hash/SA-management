@@ -32,6 +32,7 @@
 | 取込実行履歴 | `sa_import_log` | `import_event_id` | 取込成否・失敗再試行（方式候補） |
 | 営業所別設定 | `sa_branch_settings` | `setting_id` | 営業所ごとのDrive保存先フォルダの設定履歴（追記型） |
 | 依頼別フォルダ | `sa_request_folders` | `request_id` | 依頼ごとのDriveフォルダID（1依頼1行） |
+| 更新履歴（表示用） | `更新履歴` | なし（行の並び） | SA画面に表示する変更のお知らせ（日付・内容）。業務データではない |
 
 社員・営業所マスターは営業AIメモの既存マスターを直接参照する。SA管理DBへ複製・同期しない。参照キーは `user_master.user_key`（本人）と `master_branch_name`（所属。営業所名の文字列）。営業AIの表はSheets API読み取り専用（`spreadsheets.readonly`）で参照する。本人は `Session.getActiveUser().getEmail()` と `user_key` の照合で判定し、`active_flag` が「有効」の利用者だけを許可する（SA＝`sales_support`、営業＝`sales`。`sysadmin`は両画面可）。
 
@@ -76,6 +77,8 @@
 | `sa_note` | String/null | SAの備考。完了コメントとは独立 |
 | `extraction_status` | String | `pending/complete/needs_review/failed` |
 | `extracted_at` | DateTime/null | 抽出完了時刻。外部API未許可の場合はnull |
+| `archived_at` | DateTime/null | アーカイブした日時。空ならアーカイブしていない（FR-29）。既存の表には末尾に自動で追加する（FN-20） |
+| `archived_by` | String/null | アーカイブしたSA。戻すと空にする |
 
 上記状態コードは内部保存値として採用。表示名称は「未担当／対応中／営業回答待ち／完了」。元レコードIDの一意性が営業所・元システム内のどの範囲で保証されるかを調査して複合キーを確定する。
 
@@ -127,7 +130,7 @@
 | `file_name` | String | 表示名 |
 | `mime_type` | String | ファイル形式 |
 | `file_size` | Integer | ファイルバイト数 |
-| `uploaded_by_user_id` | String | 登録したSA |
+| `uploaded_by_user_id` | String | 登録したSA、または写真を送った営業（本人の依頼のみ。FR-30） |
 | `is_returned_to_sales` | Boolean | 営業への返却対象か |
 | `created_at` | DateTime | 登録日時 |
 | `file_version` | Integer | 初期1、差替えは旧行を残し新attachment_idに版を追加 |
@@ -206,6 +209,15 @@
 
 依頼へ最初に成果物を登録するときに、ロック下で1回だけ作成する。保存先設定を変更しても書き換えない。
 
+### 4.10 `更新履歴`（表示用）
+
+| 列 | 名前 | 型 | 意味 |
+| --- | --- | --- | --- |
+| A | 日付 | Date（文字列 yyyy-MM-dd） | お知らせの日付 |
+| B | 内容 | String | 変更の内容 |
+
+1行目は見出し。シートが無いときだけ、API-18が見出しと初期行を作る。以後は利用者がシートへ行を書き足す。内容が空の行は表示しない。
+
 ## 5. 論理関係
 
 ```text
@@ -237,6 +249,7 @@ sa_requests (request_id, branch_id, sales_user_id, assigned_sa_user_id)
 | 添付 | 新規関連付け | Drive保存成功、権限確認、参照ID登録 |
 | 営業所別設定 | 追記 | 所属営業所のSAだけが設定。過去の設定は削除・書換しない。最新の版が現在の設定 |
 | 依頼別フォルダ | 新規作成 | 最初の成果物登録時にロック下で1回だけ作成し、以後は書き換えない |
+| 依頼 | アーカイブ | archived_at・archived_byの設定と取消のみ。行は削除しない（削除すると再取込で戻るため） |
 | 操作履歴 | 追記 | 過去イベントを無断削除・書換しない |
 | 通知 | キュー更新 | SA向け新着は画面起動中の表示。SA質問・回答・完了の営業宛の1対1チャット通知は送信状態を別管理し、スレッド上の業務状態をChat配送結果に連動させない |
 | 既存データ | 物理更新 | 承認済み移行計画なしに全件上書き、シート削除・作り直しをしない |

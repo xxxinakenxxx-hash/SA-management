@@ -53,14 +53,14 @@
 | API ID | 名称案 | 呼び出し元 | 入力の要点 | 出力・副作用 | 要件 |
 | --- | --- | --- | --- | --- | --- |
 | API-01 | `getMyProfile` | 両画面 | 認証コンテキスト、`actAs`（`sysadmin`のみ） | 利用者・役割・許可所属、機密項目は除外。権限がなければ、失敗の理由と役割名を返す（画面がCM-01を出す） | FR-19 |
-| API-02 | `listRequests` | SA/営業 | 状態・担当・期限絞込・本人依頼絞込・ページング | 所属営業所の認可済み依頼一覧。SA本人の並び順と未読も返す | FR-03/04/18 |
+| API-02 | `listRequests` | SA/営業 | 状態・担当・期限絞込・本人依頼絞込・`archivedOnly`（SAのみ。アーカイブ分だけを返す）・ページング | 所属営業所の認可済み依頼一覧。SA本人の並び順と未読も返す | FR-03/04/18 |
 | API-03 | `getRequestDetail` | SA/営業 | request_id | 依頼、期限原文・解釈日・至急区分、SA備考（SAのみ）、閲覧可能なメッセージ・添付メタ情報、状態、row_version | FR-05/18 |
 | API-04 | `claimRequest` | SA | request_id、更新前提条件候補 | 未担当→担当確定、履歴追加 | FR-06/08/14 |
 | API-05 | `reassignRequest` | SA | request_id、変更先SA ID、理由候補 | 担当変更、履歴追加 | FR-07/14 |
 | API-06 | `changeRequestStatus` | SA | request_id、次状態（未担当／対応中／営業回答待ち）、前提条件 | カードの明示操作による進捗更新・履歴追加。完了登録はAPI-11のみ | FR-08/14 |
 | API-07 | `postMessage` | SA/営業 | request_id、body、message_type、client_operation_id、corrects_message_id（任意）、attachment_id（任意） | 追加メッセージのmessage_id。SAの質問・回答は、その営業の1対1チャットへの通知として登録する（FN-11）。カード状態は変更しない | FR-09/10/11/15/16 |
 | API-08 | `markThreadRead` | SA/営業 | request_id、既読位置 | 当該本人の既読情報更新 | FR-11 |
-| API-09 | `registerAttachment` | SA | request_id、GAS内画面から`google.script.run`で送り、`drive.file`で保存 | Drive保存（営業所の保存先の配下に作る依頼別フォルダ。無ければ自動作成）・添付参照と履歴 | FR-12/14/25 |
+| API-09 | `registerAttachment` | SA／営業（本人の依頼に写真だけ） | request_id、GAS内画面から`google.script.run`で送り、`drive.file`で保存 | Drive保存（営業所の保存先の配下に作る依頼別フォルダ。無ければ自動作成）・添付参照と履歴 | FR-12/14/25 |
 | API-10 | `getAttachmentAccess` | SA/営業 | attachment_id、request_id | 認可済みファイルの安全な参照導線 | FR-12/18/19 |
 | API-11 | `completeRequest` | SA | request_id、完了コメント、返却添付ID群（0件可）、更新前提条件 | 唯一の完了登録経路。完了状態・履歴を保存しGoogle Chat通知を別キュー管理 | FR-13/14/16 |
 | API-12 | `getActivityHistory` | SA（営業は公開対象のみ） | request_id、ページング | 認可範囲の操作履歴 | FR-14 |
@@ -69,6 +69,9 @@
 | API-15 | `correctRequestDueDate` | SA | request_id、sa_due_date_text、sa_due_date、sa_due_urgent、expected_row_version、client_operation_id | 元原文を保持したまま訂正値・訂正者・日時・監査履歴を記録 | 相対期限訂正 |
 | API-16 | `getBranchStorageSetting` | SA | なし（営業所は本人の所属から決める） | 本人の所属営業所の保存先設定（設定の有無・フォルダURL・設定者・設定日時・設定の版）。他営業所の設定は返さない | FR-25 |
 | API-17 | `saveBranchStorageSetting` | SA | folder_url、expected_setting_version、client_operation_id | 本人の所属営業所の保存先を登録・変更し、設定履歴を追記 | FR-25 |
+| API-18 | `getChangeLog` | SA | なし | 「更新履歴」シートの行（日付・内容）を新しい順に最大20件。シートが無いときだけ見出しと初期行を作る（FN-21） | FR-28 |
+| API-19 | `archiveRequest` | SA | request_id、archive（true／false）、expected_row_version、client_operation_id | archived_at・archived_by を設定または空にし、row_versionと操作履歴（archived／unarchived）を記録。同じ状態への操作は`CONFLICT` | FR-29 |
+| API-20 | `getMonthlySummary` | SA | month（yyyy-MM。省略時は今月） | 月の合計・SA別・営業別の件数と、各数に入る依頼ID・依頼の一覧項目・選べる月を返す。アーカイブ分を含む | FR-31 |
 
 取込処理・通知配送は公開画面から自由実行できるAPIにせず、認可された内部処理として扱う。添付アップロードの実体通信方式はGASのサイズ・認証・ホスティングの技術検証が必要。
 
@@ -80,6 +83,10 @@
 - **API-06とAPI-11**：通常のカード状態変更はAPI-06、**完了への変更はAPI-11のみ**。API-06の`completed`指定は拒否。営業回答待ちからも完了操作を許可。完了後の明示的な再開はAPI-06で`in_progress`へ変更可能。メッセージ投稿でカード状態を変更しない。
 - **API-09/10**：添付は`request_id`とリンク投稿`message_id`を対応付け、`attachment_id`の同一依頼一致を確認。一般公開Driveリンクは返さず、取得者ごとに権限を再確認する。API-09はFN-19で依頼別フォルダを確定してから保存する。API-10は、保存先設定が変わった後でも、添付のDriveファイルIDで取得する。
 - **SA向け画面通知**：起動中のみ新着・未読をAPI-02/03/08で差分更新。営業へは質問・回答・完了の保存成功を起点に、その営業の1対1チャットへの通知（FN-11）を登録し、配送結果を本体保存と分離する。
+
+- **API-02とアーカイブ**：アーカイブした依頼は件数（counts）と通常の一覧から外し、counts.archived にSAだけ件数を返す。営業にはアーカイブ分を返さない。
+- **API-09の営業の写真**：営業は本人の依頼にだけ、MIMEが `image/jpeg`・`image/png` のものだけ登録できる（それ以外は`VALIDATION_ERROR`、他人の依頼は`FORBIDDEN`）。スレッドの投稿は sender_role `sales`・message_type `attachment_link`、操作履歴は `sales_photo`。営業には自分が送った写真の投稿だけを見せ、API-10で自分が送った写真を取得できる。
+- **API-20の数え方**：受付＝受付日時（source_recorded_at、無ければcreated_at）がその月。完了＝状態が完了でcompleted_atがその月。SA別は今の担当者、営業別は依頼した営業。平均日数は完了分の受付から完了までの日数の平均（小数1桁）。
 
 ### 3.2 営業所別Drive保存先設定（API-16/17）
 
@@ -113,6 +120,8 @@
 | FN-17 | `readBranchStorageSetting_` | 営業所の現在の保存先設定（最新の版）を取得する | `sa_branch_settings` |
 | FN-18 | `verifyDriveFolderWritable_` | 保存先の中に確認用の一時フォルダを作って削除し、フォルダの存在と書込可否を確認する。共有設定は変更しない | Drive |
 | FN-19 | `resolveRequestFolder_` | 依頼の依頼別フォルダを返す。無ければロック下で、保存先配下の同名フォルダの有無を検索し、なければ作成して`sa_request_folders`へ登録する（重複作成の防止） | `sa_branch_settings`、`sa_request_folders`、Drive |
+| FN-20 | `ensureRequestArchiveColumns_` | sa_requests の末尾にアーカイブ用の2列が無ければ足す（見出しが想定外なら止める）。API・定期取込の入口で呼ぶ | `sa_requests` |
+| FN-21 | `ensureChangeLogSheet_` | 「更新履歴」シートが無ければ、ロック下で見出しと初期行を作る | 「更新履歴」シート |
 
 上記は論理責務を整理する仮の関数名。取込は5分ごとの時間主導トリガーで起動する。GASの`doGet`の`view`による具体的振り分け、関数ファイル分割、公開操作許可リストは実装時に確定。内部関数はクライアントに直接公開しない。
 
@@ -173,9 +182,11 @@
 | 担当引受・変更 | 不可 | 可（運用詳細未定） | 不可 |
 | 状態変更・完了 | 不可 | 可（許可遷移のみ） | 不可 |
 | メッセージ投稿 | 自分の依頼に回答・投稿 | 所属内の依頼へ投稿 | 不可 |
-| 添付登録 | 初期対象外 | 可 | 不可 |
-| 添付参照 | 自分の依頼に返却された成果物（本人識別・権限再確認） | 同一所属内で許可された成果物 | 他人の返却資料・他営業所は不可 |
+| 添付登録 | 本人依頼に写真（JPEG・PNG）だけ | 可 | 不可 |
+| 添付参照 | 自分が送った写真と、自分の依頼に返却された成果物（本人識別・権限再確認） | 同一所属内で許可された成果物 | 他人の返却資料・他営業所は不可 |
 | 保存先設定の参照・変更 | 不可 | 可（所属営業所の設定のみ） | 他営業所の設定は参照・変更とも不可 |
+| アーカイブ・戻す | 不可 | 可（所属営業所の依頼） | 不可 |
+| 月間集計 | 不可 | 可（所属営業所の依頼） | 不可 |
 | 操作履歴 | 開示範囲未確定 | 許可された依頼の必要項目 | 不可 |
 | 通知キュー直接操作 | 不可 | 不可（内部処理） | 不可 |
 
@@ -188,6 +199,7 @@
 - `sa_attachments`：API-09/10/11、FN-10。DriveファイルIDは公開無認証URLではない。
 - `sa_branch_settings`：API-16/17、FN-17/19。追記型で、営業所ごとに最新の版が現在の設定。
 - `sa_request_folders`：API-09、FN-19。1依頼1行。
+- 「更新履歴」シート：API-18、FN-21。表示用で業務データではない。
 - `sa_activity_log`：API-12、FN-09。監査ログの追記が必要。
 - `sa_notifications`：FN-11/12。送信状態は依頼状態と別管理。
 - `sa_read_cursors`：API-08/14、FN-13。本人別の既読と表示順を管理し、他者設定と分離。
