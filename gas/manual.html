@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>AIメモSA管理｜基本作業・ヘルプマニュアル</title>
+<style>
+:root{
+  --ink:#152a3a; --muted:#627486; --line:#dce5ec; --paper:#f4f7f9; --white:#fff;
+  --navy:#153d56; --blue:#1679a6; --cyan:#e6f5fa; --green:#14795b; --mint:#e8f5ef;
+  --amber:#9b6410; --sand:#fff4dc; --red:#b13d37; --rose:#fff0ee; --purple:#6654a3;
+  --shadow:0 16px 40px rgba(28,57,75,.08); --radius:18px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif;line-height:1.75}
+a{color:var(--blue)}
+button,input{font:inherit}
+button{cursor:pointer}
+.topbar{height:58px;background:#102f43;color:#e8f2f6;display:flex;align-items:center;justify-content:space-between;padding:0 max(24px,calc((100% - 1220px)/2));font-size:13px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:750;letter-spacing:.03em}
+.brand-mark{width:26px;height:26px;border-radius:8px;background:#48aacb;color:#08334a;display:grid;place-items:center;font-weight:900}
+.topbar-right{opacity:.8}
+.hero{background:linear-gradient(115deg,#153d56 0%,#1d6786 64%,#3a9caa 100%);color:white;padding:54px 24px 48px}
+.hero-inner{max-width:1220px;margin:auto;display:grid;grid-template-columns:1fr auto;gap:40px;align-items:center}
+.eyebrow{font-size:12px;letter-spacing:.14em;font-weight:800;color:#b9e7f0;text-transform:uppercase}
+h1{font-size:clamp(30px,4vw,48px);line-height:1.22;letter-spacing:-.035em;margin:10px 0 14px}
+.hero p{max-width:700px;margin:0;color:#e1f1f5;font-size:16px}
+.hero-note{padding:17px 20px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);border-radius:15px;min-width:220px;font-size:13px}
+.hero-note strong{display:block;font-size:20px;margin:3px 0}
+.layout{max-width:1220px;margin:30px auto 70px;padding:0 24px;display:grid;grid-template-columns:250px minmax(0,1fr);gap:26px;align-items:start}
+.sidebar{position:sticky;top:18px}
+.toc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 14px;box-shadow:var(--shadow)}
+.toc-title{font-size:11px;color:#718295;font-weight:800;letter-spacing:.12em;padding:0 10px 8px}
+.toc a{display:flex;text-decoration:none;color:#445a6b;font-weight:650;font-size:13px;padding:9px 10px;border-radius:9px;gap:9px;align-items:center}
+.toc a:hover,.toc a.active{background:#eaf4f8;color:#125778}
+.toc a span{font-size:11px;color:#7990a1;min-width:20px}
+.toc .toc-divider{height:1px;background:var(--line);margin:10px 8px}
+.side-actions{display:grid;gap:9px;margin-top:12px}
+.action-button{border:1px solid var(--line);border-radius:10px;background:white;padding:10px 12px;color:#395164;text-align:left;font-size:12px;font-weight:700}
+.action-button:hover{border-color:#86b9cc;background:#f8fcfd}
+main{min-width:0}
+.section{scroll-margin-top:22px;margin-bottom:26px}
+.section-heading{display:flex;gap:14px;align-items:flex-start;margin:0 0 15px}
+.section-index{width:34px;height:34px;flex:0 0 34px;border-radius:11px;background:#dff0f5;color:#126387;display:grid;place-items:center;font-weight:850}
+h2{margin:0;font-size:23px;letter-spacing:-.025em;line-height:1.35}
+.section-sub{color:var(--muted);font-size:13px;margin:4px 0 0}
+.card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow);margin-bottom:14px}
+.card h3{font-size:17px;margin:0 0 9px;line-height:1.45}
+.card p{margin:6px 0}
+.lead{font-size:15px;color:#3e5668}
+.pills{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+.pill{font-size:12px;border-radius:999px;padding:4px 10px;font-weight:750;background:#eef3f6;color:#43596a}
+.pill.blue{background:#e4f4fa;color:#12658a}.pill.green{background:#e7f4ed;color:#176c50}
+.pill.amber{background:#fff2d6;color:#875809}.pill.red{background:#ffebe8;color:#a53b33}.pill.purple{background:#f0ebfa;color:#584799}
+.callout{display:flex;gap:12px;padding:14px 16px;border-radius:12px;margin:13px 0;background:#edf7fa;border:1px solid #cce6ee;color:#294c5d;font-size:13px}
+.callout .icon{font-size:18px;line-height:1.25}
+.callout.warn{background:var(--sand);border-color:#f0dfb8;color:#6e511e}
+.callout.error{background:var(--rose);border-color:#f1cfca;color:#783d38}
+.callout.success{background:var(--mint);border-color:#cce6d8;color:#275b48}
+.steps{counter-reset:step;display:grid;gap:0;margin:16px 0 4px}
+.step{position:relative;display:grid;grid-template-columns:42px 1fr;gap:14px;padding:0 0 20px}
+.step:last-child{padding-bottom:0}
+.step:not(:last-child):after{content:"";position:absolute;top:40px;left:19px;bottom:0;width:2px;background:#d7e7ed}
+.step-no{z-index:1;width:40px;height:40px;border-radius:13px;background:#e6f4f8;color:#147398;display:grid;place-items:center;font-size:14px;font-weight:850}
+.step-content{padding-top:2px}
+.step-content h3{margin:0 0 4px;font-size:16px}
+.step-content p{font-size:13px;color:#52687a;margin:3px 0}
+.screen-label{display:inline-block;background:#eff3f5;border:1px solid #dfe7eb;border-radius:6px;padding:1px 7px;color:#233c4c;font-weight:750;font-size:12px;white-space:nowrap}
+.status-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:15px 0}
+.status-card{border:1px solid var(--line);border-radius:13px;padding:13px 14px;background:#fbfcfd}
+.status-card strong{display:block;margin-bottom:4px;font-size:13px}
+.status-card p{font-size:12px;line-height:1.6;color:#5e7181;margin:0}
+.status-card .pill{margin-bottom:7px}
+.field-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:13px 0}
+.field{border:1px solid var(--line);border-radius:11px;padding:12px 10px;background:#fbfcfd;text-align:center}
+.field strong{display:block;font-size:12px}
+.field small{display:block;color:#758697;font-size:10px;margin-top:4px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mini-card{border:1px solid var(--line);border-radius:13px;padding:15px;background:#fbfcfd}
+.mini-card h3{font-size:14px}
+.mini-card p,.mini-card li{font-size:12px;color:#586d7d}
+.mini-card ul{padding-left:18px;margin:7px 0}
+table{width:100%;border-collapse:collapse;margin:13px 0;font-size:13px}
+th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:10px 11px}
+th{background:#f3f7f9;color:#425a6c;font-size:12px}
+td:first-child{font-weight:750;white-space:nowrap}
+details{border:1px solid var(--line);background:#fff;border-radius:12px;margin:9px 0;overflow:hidden}
+summary{cursor:pointer;list-style:none;padding:13px 16px;font-weight:750;font-size:14px;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}
+summary:after{content:"＋";color:#3985a4;font-size:17px;line-height:1}
+details[open] summary:after{content:"−"}
+.answer{padding:0 16px 15px;color:#52687a;font-size:13px}
+.answer p{margin:5px 0}
+.answer ul{margin:6px 0;padding-left:20px}
+.checklist{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:12px 0}
+.check{border:1px solid var(--line);border-radius:11px;padding:11px 13px;font-size:12px;color:#4e6575;background:#fcfdfd}
+.check b{display:block;color:#213d4e;margin-bottom:3px}
+.footer{border-top:1px solid var(--line);padding:18px 0;color:#718393;font-size:11px;margin-top:28px}
+.footer a{color:#347c9b}
+.app-link{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#165a77;text-decoration:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:800;margin-top:20px}
+.app-link:hover{background:#eaf7fa}
+@media(max-width:900px){
+ .layout{grid-template-columns:1fr}.sidebar{position:static}.toc{display:flex;overflow:auto;gap:3px;align-items:center;padding:9px}.toc-title,.toc-divider{display:none!important}.toc a{white-space:nowrap}.side-actions{grid-template-columns:1fr 1fr}.status-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:600px){
+ .topbar{padding:0 16px}.topbar-right{display:none}.hero{padding:38px 18px}.hero-inner{grid-template-columns:1fr;gap:18px}.hero-note{min-width:0}.layout{padding:0 14px;margin-top:18px}.card{padding:17px}.section-heading{gap:10px}h2{font-size:20px}.field-grid{grid-template-columns:repeat(2,1fr)}.field:last-child{grid-column:span 2}.two-col,.checklist{grid-template-columns:1fr}.status-grid{gap:7px}.status-card{padding:11px}.status-card p{font-size:11px}table{font-size:11px}th,td{padding:8px 6px}.side-actions{grid-template-columns:1fr 1fr}
+}
+@media print{
+ body{background:#fff;font-size:11pt}.topbar{height:36px;padding:0 12mm}.hero{padding:16mm 12mm;background:#153d56!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .hero-inner{max-width:none}.hero-note{display:none}.layout{display:block;margin:8mm auto;padding:0 12mm;max-width:none}.sidebar{display:none}.card{box-shadow:none;break-inside:avoid;padding:6mm}.section{break-inside:auto;margin-bottom:8mm}.section-heading{break-after:avoid}details{break-inside:avoid}details .answer{display:block!important}summary:after{display:none}
+ .app-link{display:none}.footer{margin-top:8mm}a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">SA</span><span>業務マニュアル</span></div>
+  <div class="topbar-right">AIメモSA管理 ／ 基本作業・ヘルプ</div>
+</header>
+<section class="hero">
+  <div class="hero-inner">
+    <div>
+      <div class="eyebrow">AI MEMO · SA WORKSPACE</div>
+      <h1>SA依頼の基本作業と<br>困ったときの確認方法</h1>
+      <p>依頼の確認から担当、営業への質問、完了登録まで。画面に表示される言葉に合わせて、毎日の操作を短くまとめました。</p>
+      <a class="app-link" href="https://script.google.com/a/macros/marubishi-group.co.jp/s/AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0/exec" target="_blank" rel="noopener">本番のAIメモSA管理を開く <span aria-hidden="true">↗</span></a>
+    </div>
+    <aside class="hero-note"><span>対象画面</span><strong>AIメモSA管理</strong><span>本番画面の表示を確認して作成<br>確認日：2026年11月12日</span></aside>
+  </div>
+</section>
+<div class="layout">
+  <aside class="sidebar">
+    <nav class="toc" aria-label="目次">
+      <div class="toc-title">目次</div>
+      <a href="#start"><span>01</span>まず見る場所</a>
+      <a href="#basic"><span>02</span>基本作業の流れ</a>
+      <a href="#assign"><span>03</span>担当・期限</a>
+      <a href="#communicate"><span>04</span>営業への質問・投稿</a>
+      <a href="#finish"><span>05</span>完了・共有メモ</a>
+      <div class="toc-divider"></div>
+      <a href="#help"><span>06</span>ヘルプ</a>
+      <a href="#labels"><span>07</span>画面用語</a>
+    </nav>
+    <div class="side-actions">
+      <button class="action-button" onclick="window.print()">印刷する / PDF保存</button>
+      <button class="action-button" onclick="window.scrollTo({top:0,behavior:'smooth'})">ページ上部へ ↑</button>
+    </div>
+  </aside>
+  <main>
+    <section class="section" id="start">
+      <div class="section-heading"><span class="section-index">01</span><div><h2>まず見る場所</h2><p class="section-sub">未担当・自分の担当・営業回答待ちを確認します。</p></div></div>
+      <div class="card">
+        <p class="lead">画面左側の状態ボタンや担当フィルターで依頼を絞り込み、一覧から対象の依頼を開きます。</p>
+        <div class="status-grid">
+          <div class="status-card"><span class="pill">未担当</span><p>まだSA担当が付いていない依頼を確認します。</p></div>
+          <div class="status-card"><span class="pill blue">対応中</span><p>SAが対応している依頼を確認します。</p></div>
+          <div class="status-card"><span class="pill amber">営業回答待ち</span><p>営業からの回答を待っている依頼を確認します。</p></div>
+          <div class="status-card"><span class="pill green">完了</span><p>完了登録された依頼を確認します。</p></div>
+        </div>
+        <div class="callout"><span class="icon">👀</span><div><b>先に見る項目</b><br><span class="screen-label">未担当</span>、<span class="screen-label">自分の担当</span>、<span class="screen-label">未読あり</span>、<span class="screen-label">営業回答待ち</span>を順に確認すると、着手前の依頼や返事待ちを把握できます。</div></div>
+        <h3>依頼が一覧に見つからないとき</h3>
+        <ol>
+          <li>検索欄の文字を確認します。</li>
+          <li>状態・担当・期限の絞り込みを確認します。</li>
+          <li><span class="screen-label">条件をクリア</span>を押し、条件を外して探し直します。</li>
+        </ol>
+        <p class="section-sub">一覧には状態、担当者、期限で絞る項目があります。期限は「期限超過」「今日」「3日以内」「急ぎ」を選べます。</p>
+      </div>
+    </section>
+
+    <section class="section" id="basic">
+      <div class="section-heading"><span class="section-index">02</span><div><h2>基本作業の流れ</h2><p class="section-sub">依頼を開いたら、原文とAI整理内容を確認してから対応します。</p></div></div>
+      <div class="card">
+        <div class="steps">
+          <div class="step"><span class="step-no">1</span><div class="step-content"><h3>依頼を選ぶ</h3><p>一覧で対象の依頼を選択します。詳細画面に依頼名、受付日、営業担当、顧客、拠点、担当SAが表示されます。</p></div></div>
+          <div class="step"><span class="step-no">2</span><div class="step-content"><h3>営業が登録した文章を読む</h3><p><span class="screen-label">依頼内容（営業が登録した文章）</span>を確認します。ここが依頼の原文です。</p></div></div>
+          <div class="step"><span class="step-no">3</span><div class="step-content"><h3>AIが整理した項目を確認する</h3><p>原文と照らし合わせ、項目ごとの内容と「抽出済み」「要確認」などの表示を確認します。</p></div></div>
+          <div class="step"><span class="step-no">4</span><div class="step-content"><h3>担当・期限を整える</h3><p>未担当なら<span class="screen-label">担当する</span>、担当を引き継ぐなら<span class="screen-label">担当を変更</span>。期限の誤りは<span class="screen-label">期限を訂正</span>で修正します。</p></div></div>
+          <div class="step"><span class="step-no">5</span><div class="step-content"><h3>必要な連絡・ファイルを追加する</h3><p>営業への質問または通常の投稿を選んで送信し、必要に応じて<span class="screen-label">ファイルを追加</span>します。</p></div></div>
+          <div class="step"><span class="step-no">6</span><div class="step-content"><h3>対応が終わったら完了登録する</h3><p>作業と必要な共有が終わった依頼で<span class="screen-label">完了登録</span>を押します。登録後、一覧の状態表示を確認します。</p></div></div>
+        </div>
+        <div class="callout warn"><span class="icon">!</span><div>AIの整理内容は、営業が入力した原文と照らし合わせてください。「要確認」の項目や期限が曖昧なときは、内容を確認してから次へ進みます。</div></div>
+      </div>
+      <div class="card">
+        <h3>AIが整理した5項目</h3>
+        <div class="field-grid">
+          <div class="field"><strong>誰に</strong><small>対象者・相手</small></div>
+          <div class="field"><strong>何を</strong><small>依頼内容</small></div>
+          <div class="field"><strong>依頼の種類</strong><small>作業の分類</small></div>
+          <div class="field"><strong>決まっていること</strong><small>確定している条件</small></div>
+          <div class="field"><strong>いつまで</strong><small>期限の表現</small></div>
+        </div>
+        <p class="section-sub">画面上の項目名です。抽出結果の誤りや不足があれば、原文を優先して確認してください。</p>
+      </div>
+    </section>
+
+    <section class="section" id="assign">
+      <div class="section-heading"><span class="section-index">03</span><div><h2>担当・期限を設定する</h2><p class="section-sub">担当者と期限は、依頼詳細画面から操作します。</p></div></div>
+      <div class="card">
+        <div class="two-col">
+          <div class="mini-card">
+            <h3>未担当の依頼を引き受ける</h3>
+            <ol><li>未担当の依頼を開きます。</li><li><span class="screen-label">担当する</span>を押します。</li><li>担当表示が変わったことを確認します。</li></ol>
+          </div>
+          <div class="mini-card">
+            <h3>担当を別のSAへ変更する</h3>
+            <ol><li><span class="screen-label">担当を変更</span>を押します。</li><li>「変更先のSA」を選びます。</li><li>必要な場合は理由を入力し、<span class="screen-label">担当を変更する</span>を押します。</li></ol>
+          </div>
+        </div>
+        <div class="callout"><span class="icon">ℹ️</span><div>担当変更の画面には「理由（任意）」と表示されます。画面説明では、SA間の変更に承認は不要で、変更内容は操作履歴に記録されます。</div></div>
+      </div>
+      <div class="card">
+        <h3>期限を訂正する</h3>
+        <ol>
+          <li>依頼詳細の<span class="screen-label">期限を訂正</span>を押します。</li>
+          <li>期限の表現（例：来週の金曜日）と期限の日付を入力します。</li>
+          <li>日付を付けずに急ぎとして扱う場合は、<span class="screen-label">急ぎ（日付は付けません）</span>にチェックします。</li>
+          <li>訂正内容を確認して、画面の<span class="screen-label">期限を訂正する</span>を押します。</li>
+        </ol>
+        <div class="callout warn"><span class="icon">!</span><div>期限訂正の画面説明では、営業が登録した依頼原文は変更されず、訂正した人と時刻が記録されます。原文の期限表現と訂正後の日付の両方を確認してください。</div></div>
+      </div>
+    </section>
+
+    <section class="section" id="communicate">
+      <div class="section-heading"><span class="section-index">04</span><div><h2>営業への質問・通常の投稿</h2><p class="section-sub">送信内容に合わせて投稿の種類を選びます。</p></div></div>
+      <div class="card">
+        <table>
+          <thead><tr><th>選択肢</th><th>使う場面</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td>営業へ質問</td><td>依頼元の営業担当へ確認したいことがある</td><td>「営業へ質問」を選び、本文を入力して「送信」</td></tr>
+            <tr><td>通常の投稿</td><td>スレッドに通常の連絡を書き込む</td><td>「通常の投稿」を選び、本文を入力して「送信」</td></tr>
+          </tbody>
+        </table>
+        <div class="callout"><span class="icon">✍️</span><div>入力欄の表示名は<span class="screen-label">本文</span>です。質問のつもりで通常の投稿を選ぶなど、種類の選択違いがないか送信前に確認します。</div></div>
+        <div class="callout error"><span class="icon">!</span><div>送信後はスレッドの表示を確認してください。本番画面では「営業へ通知：送信できませんでした」という通知失敗表示も確認されています。失敗表示が出た場合、営業への通知が届いたと判断しないでください。この画面では再送方法・問い合わせ先は確認できていません。</div></div>
+      </div>
+    </section>
+
+    <section class="section" id="finish">
+      <div class="section-heading"><span class="section-index">05</span><div><h2>備考・添付ファイル・完了</h2><p class="section-sub">SA内のメモ、営業とのスレッド、完了状態は用途が異なります。</p></div></div>
+      <div class="card">
+        <div class="two-col">
+          <div class="mini-card"><h3>SA同士の共有メモ</h3><p><span class="screen-label">備考</span>欄は「SA同士の共有メモ（営業には表示されません）」と表示されています。社内共有用のメモを入力し、<span class="screen-label">備考を保存</span>を押します。</p></div>
+          <div class="mini-card"><h3>営業とのやりとり</h3><p>営業に見せる質問・連絡は、備考ではなくスレッドの「営業へ質問」または「通常の投稿」を使います。</p></div>
+          <div class="mini-card"><h3>添付ファイル</h3><p>スレッドの添付ファイル欄から<span class="screen-label">ファイルを追加</span>を押します。追加後、画面に表示されたファイル名を確認します。</p></div>
+          <div class="mini-card"><h3>完了登録</h3><p>対応が終わった依頼で<span class="screen-label">完了登録</span>を押し、一覧で状態が「完了」になったことを確認します。</p></div>
+        </div>
+        <div class="callout warn"><span class="icon">!</span><div>完了登録後の確認ダイアログや必須入力欄の有無は、今回の画面確認では操作していないため未確認です。完了登録時は画面の案内を読み、表示内容に従ってください。</div></div>
+      </div>
+    </section>
+
+    <section class="section" id="help">
+      <div class="section-heading"><span class="section-index">06</span><div><h2>ヘルプ</h2><p class="section-sub">よくある状況ごとの確認先です。</p></div></div>
+      <div class="card">
+        <details><summary>依頼が見つかりません</summary><div class="answer"><p>検索欄と状態・担当・期限の条件を確認し、<span class="screen-label">条件をクリア</span>を押してから探し直します。左側の「すべて」も確認してください。</p></div></details>
+        <details><summary>自分が対応する依頼を見たい</summary><div class="answer"><p>左側の<span class="screen-label">自分の担当</span>を選びます。未読の依頼を確認するときは<span class="screen-label">未読あり</span>も使えます。</p></div></details>
+        <details><summary>AIの抽出内容が原文と違います</summary><div class="answer"><p>「依頼内容（営業が登録した文章）」を読み直し、5項目と照合します。「要確認」表示の内容はそのまま確定扱いにしないでください。画面上でAI項目を直接編集できる操作は確認できていません。</p></div></details>
+        <details><summary>期限が「急ぎ」だが具体日付がありません</summary><div class="answer"><p>画面の期限訂正には<span class="screen-label">急ぎ（日付は付けません）</span>の選択肢があります。日付を決められない依頼に日付を推測で入力しないでください。</p></div></details>
+        <details><summary>営業に質問したのに返事がありません</summary><div class="answer"><p>まず依頼の状態が「営業回答待ち」か、スレッドに送信内容があるかを確認します。「営業へ通知：送信できませんでした」と表示されている場合は通知失敗です。画面内で再送手順や問い合わせ先は確認できていません。</p></div></details>
+        <details><summary>メモを営業に見せたい</summary><div class="answer"><p>備考欄は「営業には表示されません」と明記されています。営業へ伝える内容はスレッドから投稿してください。</p></div></details>
+        <details><summary>担当者を交代したい</summary><div class="answer"><p><span class="screen-label">担当を変更</span>を開いて変更先のSAを選びます。必要なら理由を入力します。画面説明ではSA間の変更に承認は不要で、操作履歴に記録されます。</p></div></details>
+        <details><summary>期限の訂正で元の依頼文も変わりますか？</summary><div class="answer"><p>画面説明では営業が登録した依頼原文は変更されません。訂正した人と時刻が記録されます。</p></div></details>
+        <details><summary>「最新に更新」はいつ使いますか？</summary><div class="answer"><p>画面上部に<span class="screen-label">最新に更新</span>ボタンがあります。更新後の挙動の詳細は今回確認していません。表示が変わらない場合は、ボタンを押して一覧を再確認してください。</p></div></details>
+      </div>
+    </section>
+
+    <section class="section" id="labels">
+      <div class="section-heading"><span class="section-index">07</span><div><h2>画面用語と確認範囲</h2><p class="section-sub">実画面のボタン名・項目名をそのまま記載しています。</p></div></div>
+      <div class="card">
+        <table>
+          <thead><tr><th>画面の表示</th><th>意味・見るポイント</th></tr></thead>
+          <tbody>
+            <tr><td>未担当</td><td>担当欄が未設定の依頼</td></tr>
+            <tr><td>対応中</td><td>SAが対応している依頼の状態</td></tr>
+            <tr><td>営業回答待ち</td><td>営業からの回答を待つ状態</td></tr>
+            <tr><td>完了</td><td>対応を完了登録した状態</td></tr>
+            <tr><td>操作の履歴</td><td>担当変更などの操作記録を確認する欄</td></tr>
+            <tr><td>備考</td><td>SA同士の共有用。営業には表示されない</td></tr>
+            <tr><td>スレッド</td><td>質問・投稿と添付ファイルを確認する欄</td></tr>
+          </tbody>
+        </table>
+        <div class="checklist">
+          <div class="check"><b>画面で確認した内容</b>一覧・検索条件・状態ボタン、依頼詳細、AIの5項目、担当変更と期限訂正の画面、備考、スレッドと添付欄。</div>
+          <div class="check"><b>操作結果まで確認していない内容</b>実データへの登録・送信・状態変更、完了登録時の確認画面、通知失敗時の再送・社内問い合わせ先。</div>
+        </div>
+        <div class="callout"><span class="icon">↗</span><div>本番画面を開く：<a href="https://script.google.com/a/macros/marubishi-group.co.jp/s/AKfycbxFOoDzJRaCTjJ5W60q3kPlx5OSVnyhcCMqQPuJnSSZzh3ieeKrWoUlGV7PN2QZ4HH0/exec" target="_blank" rel="noopener">AIメモSA管理</a></div></div>
+      </div>
+    </section>
+    <footer class="footer">AIメモSA管理｜基本作業・ヘルプマニュアル　·　画面確認日 2026年11月12日<br>画面上で確認できない運用ルールや問い合わせ先は、本書では補っていません。</footer>
+  </main>
+</div>
+<script>
+(function(){
+  var links=Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var sections=links.map(function(link){return document.querySelector(link.getAttribute('href'));}).filter(Boolean);
+  if('IntersectionObserver' in window){
+    var observer=new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting){
+          links.forEach(function(link){link.classList.toggle('active',link.getAttribute('href')==='#'+entry.target.id);});
+        }
+      });
+    },{rootMargin:'-15% 0px -70% 0px'});
+    sections.forEach(function(section){observer.observe(section);});
+  }
+})();
+</script>
+</body>
+</html>
+

@@ -21,5 +21,10 @@ function doGet(e) {
     t.initialRequestId = SA_ID_PATTERN_.test(rid) ? rid : '';
     return t.evaluate().setTitle('SA依頼').addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   }
+  if (view === 'manual') {
+    // SA依頼のマニュアル（2026-11-24 利用者指示で掲示。利用者から受け取ったHTMLをそのまま表示する）。
+    return HtmlService.createHtmlOutputFromFile('manual').setTitle('AIメモSA管理｜基本作業・ヘルプマニュアル')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
   return cm01Output_('forbidden', 'この画面は、まだ使えません。');
 }
