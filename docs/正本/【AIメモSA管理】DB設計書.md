@@ -1,7 +1,7 @@
 # 【AIメモSA管理】DB設計書
 
 作成日：2026-10-20  
-文書状態：業務方針確定・技術検証済み（工程00、2026-10-28）・実装未着手（物理シート未作成）  
+文書状態：業務方針確定・技術検証済み（工程00、2026-10-28）  
 初期導入：鹿児島営業所、将来は複数営業所
 
 ## 1. 目的・参照資料・前提
@@ -32,6 +32,7 @@
 | 取込実行履歴 | `sa_import_log` | `import_event_id` | 取込成否・失敗再試行（方式候補） |
 | 営業所別設定 | `sa_branch_settings` | `setting_id` | 営業所ごとのDrive保存先フォルダの設定履歴（追記型） |
 | 依頼別フォルダ | `sa_request_folders` | `request_id` | 依頼ごとのDriveフォルダID（1依頼1行） |
+| 取込設定 | `sa_import_targets` | `branch_name` | 定期取込の対象営業所と有効・無効（TRUE／FALSE） |
 | 更新履歴（表示用） | `更新履歴` | なし（行の並び） | SA画面に表示する変更のお知らせ（日付・内容）。業務データではない |
 
 社員・営業所マスターは営業AIメモの既存マスターを直接参照する。SA管理DBへ複製・同期しない。参照キーは `user_master.user_key`（本人）と `master_branch_name`（所属。営業所名の文字列）。営業AIの表はSheets API読み取り専用（`spreadsheets.readonly`）で参照する。本人は `Session.getActiveUser().getEmail()` と `user_key` の照合で判定し、`active_flag` が「有効」の利用者だけを許可する（SA＝`sales_support`、営業＝`sales`。`sysadmin`は両画面可）。
@@ -217,6 +218,18 @@
 | B | 内容 | String | 変更の内容 |
 
 1行目は見出し。シートが無いときだけ、API-18が見出しと初期行を作る。以後は利用者がシートへ行を書き足す。内容が空の行は表示しない。
+
+### 4.11 `sa_import_targets`（取込設定）
+
+| 列 | 列名 | 型 | 意味・制約 |
+| --- | --- | --- | --- |
+| A | `branch_name` | String | 営業所名。営業AIメモ `deal_records.branch_name`（利用者は `user_master.master_branch_name`）と一致させる。必須・重複不可 |
+| B | `import_enabled` | Boolean | TRUE＝定期取込の対象、FALSE＝対象外 |
+
+- 最初の定期取込のときに、シートが無ければ作り、営業AIの `user_master` にある所属名を1行ずつ登録する。TRUE にするのは切替前の取込対象（スクリプトプロパティ `SA_IMPORT_BRANCH`、未設定なら鹿児島）だけで、ほかは FALSE。作った後はスクリプトプロパティ `SA_IMPORT_TARGETS_INIT` に印を付け、以後は作り直さない。
+- 営業所の追加・停止は、利用者がこのシートの行と TRUE／FALSE を編集して行う。プログラムはこのシートを読むだけで書き換えない。
+- シートが無い、見出しが違う、行が無い、営業所名が空や重複、TRUE／FALSE 以外の値は設定エラーとし、どの営業所も処理しない（対象を推測で補わない）。
+- TRUE／FALSE は取込のON／OFFだけで、画面の閲覧範囲は変えない。FALSE にしても登録済みの依頼は消さない。`sa_branch_settings`（Drive保存先）とは混在させない。
 
 ## 5. 論理関係
 
