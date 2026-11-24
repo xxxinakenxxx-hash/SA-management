@@ -75,6 +75,24 @@
   .kpi .l { color:var(--sub); font-size:12px; }
   .kpi .v { font-size:24px; font-weight:700; line-height:1.2; }
 
+  .sumv { padding:12px 18px 16px; overflow:auto; flex:1; min-height:0; }
+  .sumv .bar { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+  .sumv .bar h2 { margin:0; font-size:16px; }
+  .sumv select { padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .sumv .cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px; }
+  .sumv .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:10px 14px; text-align:left; }
+  .sumv .card .l { font-size:12px; color:var(--sub); } .sumv .card .v { font-size:22px; font-weight:700; }
+  .sumv .box { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px; }
+  .sumv .box h3 { margin:0 0 6px; font-size:14px; }
+  .sumv table { width:100%; border-collapse:collapse; font-size:13px; }
+  .sumv th, .sumv td { padding:6px 8px; border-bottom:1px solid var(--line2); text-align:right; }
+  .sumv th:first-child, .sumv td:first-child { text-align:left; }
+  .sumv th { color:var(--sub); font-weight:600; font-size:12px; }
+  .sumv .num { border:0; background:transparent; color:var(--primary); padding:0 4px; text-decoration:underline; }
+  .sumv .num:disabled { color:var(--faint); text-decoration:none; }
+  .sumv .pick li { list-style:none; } .sumv .pick ul { margin:0; padding:0; }
+  .sumv .pick button.it { width:100%; text-align:left; border:0; border-bottom:1px solid var(--line2); background:transparent; padding:8px 4px; display:flex; gap:8px; align-items:center; }
+  .sumv .pick button.it:hover { background:var(--sel); }
   .cols { display:grid; grid-template-columns:minmax(300px, 360px) minmax(380px, 1fr) minmax(260px, 320px); gap:12px; padding:10px 18px 16px; flex:1; min-height:0; }
   .col { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); display:flex; flex-direction:column; min-height:0; min-width:0; }
   .col .hd { padding:12px 14px 10px; border-bottom:1px solid var(--line2); }
@@ -210,7 +228,8 @@
     </header>
     <div id="banner" class="banner hidden" role="alert"></div>
     <section class="kpis" id="kpis" aria-label="件数"></section>
-    <section class="cols">
+    <section class="sumv hidden" id="summaryView" aria-label="集計"></section>
+    <section class="cols" id="cols">
       <div class="col" id="colList">
         <div class="hd">
           <h2>依頼一覧</h2>
@@ -430,6 +449,7 @@
     $('kw').addEventListener('input', function () { var v = this.value; clearTimeout(t); t = setTimeout(function () { S.f.keyword = v; refreshList(true); }, 350); });
   }
   function setFilters(f) {
+    if (S.view === 'summary') showWork();
     S.f = f; $('fStatus').value = f.status; $('fAssignee').value = f.assignee; $('fDue').value = f.dueFilter; $('kw').value = f.keyword; refreshList(true);
   }
   function filtersActive() { return !!(S.f.status || S.f.assignee || S.f.dueFilter || S.f.keyword || S.f.unread || S.hideDone); }
@@ -470,12 +490,13 @@
   function renderNav() {
     var c = S.counts || {}, nav = $('nav'); clear(nav);
     [['', '', 'すべて', c.total], ['unassigned', '', '未担当', c.unassigned], ['in_progress', '', '対応中', c.in_progress], ['waiting_sales', '', '営業回答待ち', c.waiting_sales], ['completed', '', '完了', c.completed], ['', 'me', '自分の担当', null]].forEach(function (n) {
-      var on = S.f.status === n[0] && S.f.assignee === n[1] && !S.f.dueFilter && !S.f.keyword && !S.f.unread;
+      var on = S.view !== 'summary' && S.f.status === n[0] && S.f.assignee === n[1] && !S.f.dueFilter && !S.f.keyword && !S.f.unread;
       nav.appendChild(el('button', { class: 'nav' + (on ? ' on' : ''), type: 'button', onclick: function () { setFilters({ status: n[0], assignee: n[1], dueFilter: '', keyword: '' }); } },
         [el('span', { text: n[2] }), n[3] === null || n[3] === undefined ? null : el('span', { class: 'n', text: String(n[3]) })]));
     });
-    nav.appendChild(el('button', { class: 'nav' + (S.f.unread ? ' on' : ''), type: 'button', onclick: function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: true }); } },
+    nav.appendChild(el('button', { class: 'nav' + (S.f.unread && S.view !== 'summary' ? ' on' : ''), type: 'button', onclick: function () { setFilters({ status: '', assignee: '', dueFilter: '', keyword: '', unread: true }); } },
       [el('span', { text: '未読あり' }), el('span', { class: 'n', text: String(c.unread || 0) })]));
+    nav.appendChild(el('button', { class: 'nav' + (S.view === 'summary' ? ' on' : ''), type: 'button', id: 'navSummary', onclick: function () { showSummary(); } }, [el('span', { text: '集計' })]));
   }
   function dueText(it) {
     if (it.dueDate) return '期限 ' + it.dueDate;
@@ -801,6 +822,49 @@
     m.appendChild(el('div', { class: 'dlg' }, [el('div', { class: 'dh2', text: title }), el('div', { class: 'db' }, bodyKids), foot]));
     m.classList.remove('hidden');
   }
+  /* ---------- 集計（月間・SA別・営業別。数字を押すと依頼を出す）---------- */
+  function showWork() { S.view = 'work'; $('summaryView').classList.add('hidden'); $('kpis').classList.remove('hidden'); $('cols').classList.remove('hidden'); renderNav(); }
+  function showSummary() {
+    if (S.dirtyOrder && !window.confirm('保存していない並び順の変更があります。破棄して移動しますか？')) return;
+    S.view = 'summary'; $('kpis').classList.add('hidden'); $('cols').classList.add('hidden'); $('summaryView').classList.remove('hidden'); renderNav();
+    loadSummary(S.sumMonth || '');
+  }
+  function loadSummary(month) {
+    var v = $('summaryView'); clear(v); v.appendChild(el('div', { class: 'placeholder', text: '読み込み中です…' }));
+    S.sumPick = null;
+    api('getMonthlySummary', { month: month }).then(function (res) {
+      if (S.view !== 'summary') return;
+      if (!res.success) { clear(v); v.appendChild(el('div', { class: 'placeholder', text: '集計を読み込めませんでした。' })); if (!handleFail(res)) showBanner('err', firstErr(res)); return; }
+      S.sum = res.data; S.sumMonth = res.data.month; renderSummary();
+    });
+  }
+  function monthLabel(m) { var p = m.split('-'); return p[0] + '年' + Number(p[1]) + '月'; }
+  function renderSummary() {
+    var v = $('summaryView'), d = S.sum; clear(v);
+    var sel = el('select', { id: 'sumMonth', 'aria-label': '月' }, d.months.map(function (m) { var o = el('option', { value: m, text: monthLabel(m) }); if (m === d.month) o.selected = true; return o; }));
+    sel.addEventListener('change', function () { loadSummary(sel.value); });
+    v.appendChild(el('div', { class: 'bar' }, [el('h2', { text: '集計' }), sel, el('span', { class: 'unconfirmed', text: '自分の営業所の依頼（アーカイブした依頼も含む）' })]));
+    var num = function (list, label) { return el('button', { class: 'num', type: 'button', text: String(list.length), disabled: !list.length, onclick: function () { S.sumPick = { label: label, ids: list }; renderSummary(); } }); };
+    var t = d.total, card = function (l, list, label) { return el('div', { class: 'card' }, [el('div', { class: 'l', text: l }), el('div', { class: 'v' }, [num(list, label), document.createTextNode(' 件')])]); };
+    v.appendChild(el('div', { class: 'cards' }, [card('受付', t.received, monthLabel(d.month) + 'の受付'), card('完了', t.completed, monthLabel(d.month) + 'の完了'), card('受付のうち未完了', t.open, monthLabel(d.month) + '受付のうち未完了'),
+      el('div', { class: 'card' }, [el('div', { class: 'l', text: '平均の対応日数（完了分）' }), el('div', { class: 'v', text: t.avgDays === null ? '－' : t.avgDays + ' 日' })])]));
+    var days = function (x) { return x === null || x === undefined ? '－' : x + ' 日'; };
+    var saT = el('table', { id: 'sumSa' }, [el('tr', {}, ['SA', '受付', '完了', '対応中', '営業回答待ち', '未担当', '平均日数'].map(function (h) { return el('th', { text: h }); }))]);
+    d.bySa.forEach(function (r) { saT.appendChild(el('tr', {}, [el('td', { text: r.name }), el('td', {}, [num(r.received, r.name + '：受付')]), el('td', {}, [num(r.completed, r.name + '：完了')]), el('td', {}, [num(r.in_progress, r.name + '：対応中')]), el('td', {}, [num(r.waiting_sales, r.name + '：営業回答待ち')]), el('td', {}, [num(r.unassigned, r.name + '：未担当')]), el('td', { text: days(r.avgDays) })])); });
+    if (!d.bySa.length) saT.appendChild(el('tr', {}, [el('td', { class: 'unconfirmed', colspan: '7', text: 'この月の依頼はありません。' })]));
+    v.appendChild(el('div', { class: 'box' }, [el('h3', { text: 'SA別（担当）' }), saT, el('div', { class: 'unconfirmed', style: 'margin-top:6px;font-size:12px', text: '受付・対応中・営業回答待ち・未担当＝この月に受け付けた依頼。完了＝この月に完了した依頼。担当は今の担当者で数えます。' })]));
+    var slT = el('table', { id: 'sumSales' }, [el('tr', {}, ['営業（依頼した人）', '依頼', '完了', '未完了'].map(function (h) { return el('th', { text: h }); }))]);
+    d.bySales.forEach(function (r) { slT.appendChild(el('tr', {}, [el('td', { text: r.name }), el('td', {}, [num(r.received, r.name + '：依頼')]), el('td', {}, [num(r.completed, r.name + '：完了')]), el('td', {}, [num(r.open, r.name + '：未完了')])])); });
+    if (!d.bySales.length) slT.appendChild(el('tr', {}, [el('td', { class: 'unconfirmed', colspan: '4', text: 'この月の依頼はありません。' })]));
+    v.appendChild(el('div', { class: 'box' }, [el('h3', { text: '営業別' }), slT]));
+    if (S.sumPick) {
+      var map = {}; d.items.forEach(function (it) { map[it.requestId] = it; });
+      var ul = el('ul', {}, S.sumPick.ids.map(function (id) { var it = map[id]; if (!it) return null;
+        return el('li', {}, [el('button', { class: 'it', type: 'button', onclick: function () { showWork(); select(id); } }, [el('b', { text: it.title, style: 'flex:1' }), it.archived ? el('span', { class: 'badge archived', text: 'アーカイブ' }) : null, badge(it.status), el('span', { class: 'unconfirmed', text: it.salesUserName + ' / ' + (it.assignedName || '未担当') })])]); }));
+      v.appendChild(el('div', { class: 'box pick', id: 'sumPick' }, [el('h3', { text: S.sumPick.label + '（' + S.sumPick.ids.length + '件）' }), ul]));
+    }
+  }
+
   /* ---------- 更新履歴（スプレッドシート「SA管理」の「更新履歴」シートを読んで表示） ---------- */
   function changeLogDialog() {
     var body = el('div', { id: 'clogBody', class: 'unconfirmed', text: '読み込み中です…' });
