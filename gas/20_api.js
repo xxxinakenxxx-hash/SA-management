@@ -138,14 +138,15 @@ function listRequests(params) { return runApi_(function (ctx) { return handleLis
 
 // ---- API-03 getRequestDetail ----
 function readMessagesFor_(requestId, names, viewer, lastReadId) {
-  var rows = readAllMessages_().filter(function (m) { return String(m.obj.request_id) === requestId && !(viewer.role === 'sales' && String(m.obj.message_type) === 'attachment_link'); });
+  // 営業には、成果物のリンク投稿は見せない。ただし自分が送った写真の投稿は見せる。
+  var rows = readAllMessages_().filter(function (m) { return String(m.obj.request_id) === requestId && !(viewer.role === 'sales' && String(m.obj.message_type) === 'attachment_link' && String(m.obj.sender_user_id).toLowerCase() !== String(viewer.userId).toLowerCase()); });
   var me = String(viewer.userId).toLowerCase(), readIdx = -1;
   if (lastReadId) rows.forEach(function (m, i) { if (String(m.obj.message_id) === lastReadId) readIdx = i; });
   return rows.map(function (m, i) {
     var o = m.obj, mine = String(o.sender_user_id).toLowerCase() === me, out = {
       messageId: String(o.message_id), senderName: displayName_(names, o.sender_user_id), senderRole: String(o.sender_role), senderRoleLabel: SA_ROLE_NAMES_[String(o.sender_role)] || String(o.sender_role),
       messageType: String(o.message_type), body: String(o.body), createdAt: String(o.created_at), correctsMessageId: String(o.corrects_message_id || ''),
-      mine: mine, unread: !mine && i > readIdx && !(viewer.role === 'sales' && !viewer.isOwner) };
+      mine: mine, unread: !mine && i > readIdx && !(viewer.role === 'sales' && !viewer.isOwner), attachmentId: String(o.attachment_id || '') };
     if (viewer.role === 'sa' && String(o.sender_role) === 'sa') {
       var nt = findNotification_('NT-' + String(o.message_id));
       if (nt) out.notification = { status: String(nt.obj.delivery_status), code: String(nt.obj.last_error_code || '') };
@@ -195,7 +196,7 @@ function handleGetRequestDetail_(ctx, params) {
       statusTargets: isSa ? allowedStatusTargets_(o).filter(function (t) { return t !== 'in_progress' || String(o.status) !== 'completed' || !!String(o.assigned_sa_user_id || ''); }) : [],
       canArchive: isSa && !isArchivedRequest_(o), canUnarchive: isSa && isArchivedRequest_(o),
       canEditNote: isSa, canEditDue: isSa, canAttach: isSa, canComplete: isSa && (String(o.status) === 'in_progress' || String(o.status) === 'waiting_sales'),
-      postTypes: isSa ? ['question', 'normal'] : (isOwner ? ['sales_reply'] : []), canCorrect: isSa || isOwner
+      postTypes: isSa ? ['question', 'normal'] : (isOwner ? ['sales_reply'] : []), canCorrect: isSa || isOwner, canSendPhoto: isOwner
     }
   };
   if (isSa) data.saNote = String(o.sa_note || '');
@@ -445,7 +446,7 @@ function markThreadRead(params) { return runApi_(function (ctx) { return handleM
 // ---- API-12 getActivityHistory（営業には公開対象の種類だけ）----
 var SA_EVENT_LABELS_ = { claimed: '担当を引き受け', reassigned: '担当を変更', status_changed: '状態を変更', note_updated: '備考を更新', due_corrected: '期限を訂正', order_changed: '並び順を保存', archived: 'アーカイブ', unarchived: 'アーカイブから戻す',
   message_question: '質問を投稿', message_normal: '投稿', message_sales_reply: '営業が返信', message_correction: '訂正を追記',
-  attachment_registered: '成果物を登録', attachment_orphan: '成果物の保存を取り消し', completed: '完了を登録' };
+  attachment_registered: '成果物を登録', sales_photo: '営業が写真を送信', attachment_orphan: '成果物の保存を取り消し', completed: '完了を登録' };
 var SA_SALES_VISIBLE_EVENTS_ = ['claimed', 'reassigned', 'status_changed', 'completed'];
 
 function handleGetActivityHistory_(ctx, params) {

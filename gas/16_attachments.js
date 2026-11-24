@@ -95,14 +95,24 @@ function sanitizeMimeType_(m) {
   return /^[a-z0-9][a-z0-9.+-]{0,60}\/[a-z0-9][a-z0-9.+-]{0,100}$/.test(s) ? s : 'application/octet-stream';
 }
 
-// ---- API-09 registerAttachment（SAのみ）----
+// ---- API-09 registerAttachment（SA：成果物。営業：自分の依頼に写真だけ。2026-11-24 利用者指示で営業の写真を追加）----
 // 順序：入力検査 → 権限 → 二重実行の確認 → Drive保存（FN-10）→ ロック内で「添付行・スレッドのリンク・履歴」を登録。
 // Drive保存の後にSheetsの登録が失敗したら、保存したファイルを消す（消せなければ孤立ファイルを履歴に残す）。
+var SA_SALES_PHOTO_TYPES_ = ['image/jpeg', 'image/png'];
 function handleRegisterAttachment_(ctx, params) {
-  requireSa_(ctx);
+  if (!ctx || !ctx.ok) throw saError_((ctx && ctx.code) || 'AUTH_REQUIRED');
+  var bySales = ctx.role === 'sales';
+  if (!bySales) requireSa_(ctx);
   var v = parseInput_('registerAttachment', params);
   var cur = findRequestById_(v.requestId);
-  authorizeRequestAccess_(ctx, cur && cur.obj, 'sa_write');
+  // 営業は、自分の依頼にだけ、写真（JPEG・PNG）だけを送れる。
+  var authorize = function (obj) {
+    if (!bySales) { authorizeRequestAccess_(ctx, obj, 'sa_write'); return; }
+    authorizeRequestAccess_(ctx, obj, 'read');
+    if (String(obj.sales_user_id).toLowerCase() !== String(ctx.userId).toLowerCase()) throw saError_('FORBIDDEN');
+  };
+  authorize(cur && cur.obj);
+  if (bySales && SA_SALES_PHOTO_TYPES_.indexOf(v.mimeType) < 0) throw validationError_('file', '送れるのは写真（JPEG・PNG）だけです。', 'NOT_PHOTO');
   var names = userNameMap_(readUserMasterRows_());
   var done = function (dupMsg) {
     var att = dupMsg && findAttachmentById_(String(dupMsg.obj.attachment_id));
@@ -120,18 +130,18 @@ function handleRegisterAttachment_(ctx, params) {
   try {
     out = withScriptLock_(function () {
       var again = findRequestById_(v.requestId);
-      authorizeRequestAccess_(ctx, again && again.obj, 'sa_write');
+      authorize(again && again.obj);
       var dup2 = findMessageByOperation_(ctx.userId, v.clientOperationId);
       if (dup2 && String(dup2.obj.message_type) === SA_ATTACH_LINK_TYPE_) return { dupMsg: dup2 };
       var now = nowIso_(), attId = newId_('AT'), msgId = newId_('MSG');
       var att = { attachment_id: attId, request_id: v.requestId, drive_file_id: stored.driveFileId, file_name: v.fileName, mime_type: v.mimeType, file_size: stored.size,
         uploaded_by_user_id: ctx.userId, is_returned_to_sales: false, created_at: now, file_version: 1, thread_message_id: msgId };
-      var msg = { message_id: msgId, request_id: v.requestId, sender_user_id: ctx.userId, sender_role: 'sa', message_type: SA_ATTACH_LINK_TYPE_, body: v.fileName,
+      var msg = { message_id: msgId, request_id: v.requestId, sender_user_id: ctx.userId, sender_role: bySales ? 'sales' : 'sa', message_type: SA_ATTACH_LINK_TYPE_, body: v.fileName,
         created_at: now, client_operation_id: v.clientOperationId, corrects_message_id: '', attachment_id: attId };
       var attRow = appendAttachmentRow_(att), msgRow = null;
       try {
         msgRow = appendMessage_(msg);
-        appendActivityEvent_(ctx.userId, v.requestId, 'attachment_registered', '', v.fileName, evId);
+        appendActivityEvent_(ctx.userId, v.requestId, bySales ? 'sales_photo' : 'attachment_registered', '', v.fileName, evId);
       } catch (e) {
         try { if (msgRow !== null) removeMessageRow_(msgRow); } catch (e1) { /* 取り消せない場合は、保存失敗として返す */ }
         try { removeAttachmentRow_(attRow); } catch (e2) { /* 同上 */ }
@@ -160,6 +170,7 @@ function authorizeAttachmentAccess_(ctx, requestObj, attachmentObj) {
   if (ctx.role === 'sa') return true;
   var isOwner = ctx.role === 'sales' && String(requestObj.sales_user_id).toLowerCase() === String(ctx.userId).toLowerCase();
   if (isOwner && attachmentObj.is_returned_to_sales === true) return true;
+  if (isOwner && String(attachmentObj.uploaded_by_user_id).toLowerCase() === String(ctx.userId).toLowerCase()) return true; // 自分が送った写真
   throw saError_('NOT_FOUND');
 }
 

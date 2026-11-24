@@ -74,6 +74,9 @@
   .compose .st { flex:1; font-size:13px; color:var(--sub); } .compose .st.err { color:var(--bad); }
   .compose .quote { font-size:13px; color:var(--sub); background:var(--gray-weak); border-radius:8px; padding:6px 10px; margin-bottom:8px; }
   .note { font-size:13px; color:var(--sub); background:var(--gray-weak); border-radius:10px; padding:10px 12px; }
+  .photoview { position:fixed; inset:0; background:rgba(10,14,24,.88); z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; gap:12px; }
+  .photoview img { max-width:100%; max-height:80vh; border-radius:8px; background:#fff; }
+  .photoview .msg { color:#fff; font-size:15px; }
   #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(18px + env(safe-area-inset-bottom)); background:#1c2433; color:#fff; padding:10px 18px; border-radius:999px; font-size:14px; z-index:40; max-width:90vw; }
   .overlay { position:fixed; inset:0; background:var(--bg); z-index:50; display:flex; align-items:center; justify-content:center; padding:16px; }
   .overlay .box2 { background:#fff; border:1px solid var(--line); border-radius:14px; padding:24px; width:min(520px,100%); }
@@ -101,7 +104,7 @@
 (function () {
   'use strict';
   var STATUS = { unassigned: '未担当', in_progress: '対応中', waiting_sales: '営業回答待ち', completed: '完了' };
-  var MSG_TYPE = { question: '質問', normal: '投稿', sales_reply: '返信', correction: '訂正' };
+  var MSG_TYPE = { question: '質問', normal: '投稿', sales_reply: '返信', correction: '訂正', attachment_link: '写真' };
   var S = { profile: null, items: [], total: 0, counts: null, f: { status: '', mine: false, unread: false }, listBusy: false, detail: null, selectedId: '', draft: {}, posting: false, composeErr: '', dlBusy: false };
 
   function el(tag, attrs, kids) {
@@ -274,8 +277,10 @@
     d.messages.forEach(function (m) {
       var who = [el('b', { text: m.senderName }), el('span', { text: '（' + m.senderRoleLabel + '）' }), el('span', { text: fmtTime(m.createdAt) }), el('span', { class: 'tag ' + (m.messageType === 'question' ? 'q' : (m.messageType === 'correction' ? 'c' : '')), text: MSG_TYPE[m.messageType] || m.messageType })];
       if (m.unread) who.push(el('span', { class: 'tag new', text: '新着' }));
-      var node = el('div', { class: 'msg' + (m.mine ? ' mine' : '') + (m.unread ? ' new' : '') }, [el('div', { class: 'who' }, who), el('div', { class: 'bd', text: m.body })]);
-      if (m.mine && a.canCorrect && m.messageType !== 'correction') node.appendChild(el('div', { class: 'tools' }, [el('button', { type: 'button', text: '訂正を追記', onclick: function () { var dr = draftFor(r.requestId); dr.correctsId = m.messageId; dr.opId = ''; renderDetail(); var ta = $('composeText'); if (ta) ta.focus(); } })]));
+      var isPhoto = m.messageType === 'attachment_link';
+      var node = el('div', { class: 'msg' + (m.mine ? ' mine' : '') + (m.unread ? ' new' : '') }, [el('div', { class: 'who' }, who), el('div', { class: 'bd', text: (isPhoto ? '📷 ' : '') + m.body })]);
+      if (isPhoto && m.attachmentId) node.appendChild(el('div', { class: 'tools' }, [el('button', { type: 'button', text: '写真を見る', onclick: function () { viewPhoto(r.requestId, m.attachmentId); } })]));
+      if (m.mine && a.canCorrect && m.messageType !== 'correction' && !isPhoto) node.appendChild(el('div', { class: 'tools' }, [el('button', { type: 'button', text: '訂正を追記', onclick: function () { var dr = draftFor(r.requestId); dr.correctsId = m.messageId; dr.opId = ''; renderDetail(); var ta = $('composeText'); if (ta) ta.focus(); } })]));
       msgs.appendChild(node);
     });
     box.appendChild(el('div', { class: 'sec' }, [el('h2', { text: 'SAとのやり取り' }), msgs]));
@@ -299,8 +304,16 @@
     ta.value = dr.text;
     ta.addEventListener('input', function () { dr.text = ta.value; if (S.composeErr) { S.composeErr = ''; var st = $('composeSt'); if (st) { st.textContent = ''; st.className = 'st'; } } });
     c.appendChild(ta);
-    c.appendChild(el('div', { class: 'row' }, [el('span', { id: 'composeSt', class: 'st' + (S.composeErr ? ' err' : ''), text: S.posting ? '送信中です…' : S.composeErr }),
-      el('button', { class: 'btn primary', id: 'sendBtn', type: 'button', text: dr.correctsId ? '訂正を送信' : '返信を送信', disabled: S.posting, onclick: send })]));
+    var busy = S.posting || S.photoBusy;
+    var photoBtn = null;
+    if (S.detail.allowedActions.canSendPhoto && !dr.correctsId) {
+      var pin = el('input', { type: 'file', accept: 'image/*', multiple: true, id: 'photoInput', class: 'hidden', 'aria-label': '写真を選ぶ' });
+      pin.addEventListener('change', function () { var fs = Array.prototype.slice.call(pin.files || []); pin.value = ''; if (fs.length) sendPhotos(id, fs); });
+      c.appendChild(pin);
+      photoBtn = el('button', { class: 'btn', id: 'photoBtn', type: 'button', text: '📷 写真', disabled: busy, onclick: function () { pin.click(); } });
+    }
+    c.appendChild(el('div', { class: 'row' }, [photoBtn, el('span', { id: 'composeSt', class: 'st' + (S.composeErr ? ' err' : ''), text: S.photoBusy ? S.photoBusy : (S.posting ? '送信中です…' : S.composeErr) }),
+      el('button', { class: 'btn primary', id: 'sendBtn', type: 'button', text: dr.correctsId ? '訂正を送信' : '返信を送信', disabled: busy, onclick: send })]));
     return c;
   }
   function send() {
@@ -322,6 +335,58 @@
         renderDetail(); return;
       }
       delete S.draft[id]; toast(res.data.duplicate ? '同じ返信は、すでに保存されています' : '返信を送りました'); reopenQuiet(id);
+    });
+  }
+
+  /* ---------- 写真（営業が自分の依頼へ送る。2026-11-24 追加）---------- */
+  var PHOTO_MAX = 4, PHOTO_EDGE = 1600;
+  // 写真を端末の中で長い辺1600pxまで縮め、JPEGにする（通信量と待ち時間を減らすため）。
+  function shrinkPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, PHOTO_EDGE / Math.max(w, h));
+        var cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * k)); cv.height = Math.max(1, Math.round(h * k));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', 0.82).split(',')[1]);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
+  function photoName(i) { var d = new Date(), p = function (n) { return ('0' + n).slice(-2); }; return '写真_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '_' + (i + 1) + '.jpg'; }
+  function sendPhotos(id, files) {
+    if (S.photoBusy || S.posting) return;
+    if (files.length > PHOTO_MAX) { S.composeErr = '写真は1回に' + PHOTO_MAX + '枚までです。'; renderDetail(); return; }
+    var ok = 0, ng = 0, i = 0;
+    S.composeErr = '';
+    var next = function () {
+      if (i >= files.length) {
+        S.photoBusy = '';
+        if (ng) S.composeErr = ng + '枚の写真を送れませんでした。もう一度送ってください。';
+        renderDetail(); if (ok) toast(ok + '枚の写真を送りました'); reopenQuiet(id); return;
+      }
+      var n = i++;
+      S.photoBusy = '写真を送信中です…（' + (n + 1) + '/' + files.length + '）'; renderDetail();
+      shrinkPhoto(files[n]).then(function (b64) {
+        return api('registerAttachment', { requestId: id, fileName: photoName(n), mimeType: 'image/jpeg', contentBase64: b64, clientOperationId: opId() });
+      }).then(function (res) {
+        if (res && res.success) ok++; else { ng++; var c = res && res.error && res.error.code; if (c === 'AUTH_REQUIRED' || c === 'FORBIDDEN') { S.photoBusy = ''; handleFail(res); return; } }
+        next();
+      }, function () { ng++; next(); });
+    };
+    next();
+  }
+  function viewPhoto(requestId, attachmentId) {
+    var ov = el('div', { class: 'photoview', id: 'photoView', role: 'dialog', 'aria-label': '写真' }, [el('div', { class: 'msg', text: '読み込み中です…' })]);
+    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) close(); });
+    document.body.appendChild(ov);
+    api('getAttachmentAccess', { requestId: requestId, attachmentId: attachmentId }).then(function (res) {
+      clear(ov);
+      if (!res.success) ov.appendChild(el('div', { class: 'msg', text: '写真を表示できませんでした。' }));
+      else ov.appendChild(el('img', { src: 'data:' + res.data.mimeType + ';base64,' + res.data.contentBase64, alt: res.data.fileName }));
+      ov.appendChild(el('button', { class: 'btn', type: 'button', text: '閉じる', onclick: close }));
     });
   }
 

@@ -622,10 +622,11 @@
     if (!d.messages.length) box.appendChild(el('div', { class: 'empty', text: 'まだやり取りはありません。' }));
     d.messages.forEach(function (m) {
       var who = [el('b', { text: m.senderName }), el('span', { text: '（' + m.senderRoleLabel + '）' }), el('span', { text: fmtTime(m.createdAt) }),
-        el('span', { class: 'tag ' + (m.messageType === 'question' ? 'q' : (m.messageType === 'correction' ? 'c' : '')), text: MSG_TYPE[m.messageType] || m.messageType })];
+        el('span', { class: 'tag ' + (m.messageType === 'question' ? 'q' : (m.messageType === 'correction' ? 'c' : '')), text: m.messageType === 'attachment_link' && m.senderRole === 'sales' ? '写真' : (MSG_TYPE[m.messageType] || m.messageType) })];
       if (m.unread) who.push(el('span', { class: 'tag new', text: '新着' }));
       if (m.notification) who.push(el('span', { class: 'tag ' + (m.notification.status === 'sent' ? 'ok' : 'ng'), text: m.notification.status === 'sent' ? '営業へ通知：送信済み' : (m.notification.status === 'pending' ? '営業へ通知：送信待ち' : '営業へ通知：送信できませんでした') }));
-      var item = el('div', { class: 'msg-item' + (m.mine ? ' mine' : '') + (m.unread ? ' new' : ''), 'data-mid': m.messageId }, [el('div', { class: 'who' }, who), el('div', { class: 'bd2', text: (m.messageType === 'attachment_link' ? '📎 ' : '') + m.body })]);
+      var item = el('div', { class: 'msg-item' + (m.mine ? ' mine' : '') + (m.unread ? ' new' : ''), 'data-mid': m.messageId }, [el('div', { class: 'who' }, who), el('div', { class: 'bd2', text: (m.messageType === 'attachment_link' ? (m.senderRole === 'sales' ? '📷 ' : '📎 ') : '') + m.body })]);
+      if (m.messageType === 'attachment_link' && m.attachmentId && /\.(jpe?g|png|gif|webp)$/i.test(m.body)) item.appendChild(el('div', { class: 'tools' }, [el('button', { type: 'button', text: '写真を見る', onclick: function () { viewImage(d.request.requestId, m.attachmentId); } })]));
       if (m.correctsMessageId) item.insertBefore(el('div', { class: 'tools unconfirmed', text: '（先の投稿への訂正です。元の投稿は残っています）' }), item.lastChild);
       if (m.mine && d.allowedActions.canCorrect && m.messageType !== 'correction' && m.messageType !== 'attachment_link') item.appendChild(el('div', { class: 'tools' }, [el('button', { type: 'button', text: '訂正を追記', onclick: function () { var dr = draftFor(d.request.requestId); dr.type = 'correction'; dr.correctsId = m.messageId; dr.opId = ''; renderCompose(); var ta = $('composeText'); if (ta) ta.focus(); } })]));
       box.appendChild(item);
@@ -646,7 +647,7 @@
       d.attachments.forEach(function (f) {
         ul.appendChild(el('li', {}, [el('div', {}, [el('b', { text: f.fileName }), document.createTextNode('　' + fmtSize(f.fileSize)), f.isReturnedToSales ? el('span', { class: 'tag ok', text: '営業へ返却', style: 'margin-left:6px' }) : null]),
           el('div', { class: 'unconfirmed', text: f.uploadedByName + ' / ' + fmtTime(f.createdAt) }),
-          el('div', { class: 'tools' }, [el('button', { class: 'btn small', type: 'button', text: '開く（ダウンロード）', disabled: S.dlBusy, onclick: function (ev) { downloadFile(rid, f, ev.currentTarget); } })])]));
+          el('div', { class: 'tools' }, [/^image\//.test(f.mimeType) ? el('button', { class: 'btn small', type: 'button', text: '見る', onclick: function () { viewImage(rid, f.attachmentId); } }) : null, el('button', { class: 'btn small', type: 'button', text: '開く（ダウンロード）', disabled: S.dlBusy, onclick: function (ev) { downloadFile(rid, f, ev.currentTarget); } })])]));
       });
       box.appendChild(ul);
     }
@@ -738,6 +739,19 @@
       };
       send();
     }, function () { S.upBusy = false; S.upMsg = 'ファイルを読み取れませんでした。'; renderThread(); });
+  }
+  // 画像の添付を、画面の上で表示する（営業が送った写真など）。
+  function viewImage(requestId, attachmentId) {
+    var body = el('div', { id: 'imgBody', class: 'unconfirmed', text: '読み込み中です…' });
+    openModal('写真', [body], [el('button', { class: 'btn', type: 'button', text: '閉じる', onclick: closeModal })]);
+    var dlg = $('modal').querySelector('.dlg'); if (dlg) dlg.style.width = 'min(900px, 96vw)';
+    api('getAttachmentAccess', { requestId: requestId, attachmentId: attachmentId }).then(function (res) {
+      if (!$('imgBody')) return;
+      clear(body); body.className = '';
+      if (!res.success) { body.className = 'unconfirmed'; body.textContent = '写真を表示できませんでした。'; return; }
+      body.appendChild(el('img', { id: 'imgView', src: 'data:' + res.data.mimeType + ';base64,' + res.data.contentBase64, alt: res.data.fileName, style: 'display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:8px' }));
+      body.appendChild(el('div', { class: 'unconfirmed', style: 'margin-top:6px', text: res.data.fileName }));
+    });
   }
   function downloadFile(requestId, f, btn) {
     if (S.dlBusy) return;
